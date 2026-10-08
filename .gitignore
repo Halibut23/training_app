@@ -1,0 +1,27 @@
+# ── Git policy: DESIGN.md D-015 ─────────────────────────────────────────────
+# Tracked: system (code, schemas, tests, SDD specs CLAUDE.md + docs/*.md, *.example.* files).
+# Ignored: everything personal (athlete data, plans, logs, hand-off) and all secrets.
+
+# Secrets & local environment
+.env
+.garmin_tokens/
+.venv*/
+__pycache__/
+.mypy_cache/
+*.pyc
+
+# Personal hand-off (source document)
+docs/reference/
+/traningsplan_handoff.md
+
+# Athlete data — keep only invented examples and folder placeholders
+data/**
+!data/**/
+!data/**/.gitkeep
+!data/**/*.example.*
+
+# Personal plans and coaching log
+plans/*
+!plans/.gitkeep
+log/*
+!log/.gitkeep

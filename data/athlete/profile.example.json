@@ -1,0 +1,196 @@
+{
+  "athlete": "Exempel Atlet",
+  "as_of": "2026-01-01",
+  "source": "INVENTED EXAMPLE — template and test fixture (DESIGN D-015). Copy to profile.json with `python -m trainer init`.",
+  "budget": {
+    "avg_hours_per_week": 6.0,
+    "normal_range_hours": [
+      5.5,
+      6.5
+    ],
+    "strength_sessions_per_week": 2,
+    "strength_minutes_per_session": [
+      30,
+      40
+    ]
+  },
+  "bike": {
+    "ftp_w": 230,
+    "ftp_history": [
+      {
+        "date": "2025-06-01",
+        "ftp_w": 215,
+        "note": "Exempel"
+      },
+      {
+        "date": "2025-12-01",
+        "ftp_w": 230,
+        "note": "Exempel"
+      }
+    ],
+    "max_hr_observed_bpm": 180,
+    "zones_w": {
+      "recovery": [
+        0,
+        135
+      ],
+      "z2": [
+        140,
+        175
+      ],
+      "tempo": [
+        175,
+        195
+      ],
+      "sweet_spot": [
+        200,
+        216
+      ],
+      "threshold": [
+        217,
+        237
+      ],
+      "vo2": [
+        242,
+        277
+      ],
+      "short_hard": [
+        280,
+        null
+      ]
+    },
+    "zones_note": "Exempelzoner för FTP 230 W."
+  },
+  "run": {
+    "current_km_per_week": 15,
+    "current_structure": "3 x 5 km",
+    "lthr_bpm_estimate": 170,
+    "lthr_is_calibrated": false,
+    "easy_pace_min_km": [
+      5.5,
+      6.0
+    ],
+    "easy_hr_cap_bpm": 145,
+    "quality_pace_threshold_min_km": 4.75,
+    "history": {
+      "typical_km_per_week": 30,
+      "peak_block_km_per_week": [
+        40,
+        45
+      ],
+      "peak_block_weeks": 6,
+      "typical_quality": [
+        "3 x 8 min tröskel",
+        "5 x 3 min VO2"
+      ]
+    },
+    "pbs": [
+      {
+        "event": "10k",
+        "time": "47:00",
+        "date": "2025-05-01"
+      },
+      {
+        "event": "half_marathon",
+        "time": "1:45:00",
+        "date": "2025-09-01"
+      }
+    ]
+  },
+  "injury": {
+    "primary_limiter": "Exempel: överbelastningskänning i knät — begränsar löpvolymen.",
+    "history": [
+      "Exempel: känning efter lopp våren 2025, återupptagen försiktigt."
+    ],
+    "current_status": "unknown"
+  },
+  "recovery_baseline": {
+    "rhr_bpm": [
+      45,
+      48
+    ],
+    "hrv_ms": [
+      60,
+      75
+    ],
+    "note": "Sekundära signaler (R-REC-01)."
+  },
+  "strength": {
+    "focus": [
+      "benstyrka",
+      "höft",
+      "bål",
+      "vad"
+    ],
+    "rir": [
+      1,
+      3
+    ]
+  },
+  "preferences": {
+    "example": "Fri text om format atleten föredrar."
+  },
+  "reference_sessions": [
+    {
+      "id": "ref-long",
+      "date": "2025-08-01",
+      "session_type": "bike_long",
+      "sport": "bike",
+      "environment": "outdoor",
+      "summary": "Exempel: 120 km, 4:00, NP 190 W, IF 0,83",
+      "duration_s": 14400,
+      "np": 190,
+      "if": 0.83,
+      "tss": 275,
+      "avg_hr": 140
+    },
+    {
+      "id": "ref-8x1",
+      "date": "2025-09-01",
+      "session_type": "bike_vo2",
+      "sport": "bike",
+      "environment": "indoor",
+      "summary": "Exempel: 8 x 1 min @ 300 W",
+      "work_interval_avg_power": 300,
+      "work_interval_avg_hr": 158
+    },
+    {
+      "id": "ref-2x20",
+      "date": "2025-09-15",
+      "session_type": "bike_threshold",
+      "sport": "bike",
+      "environment": "indoor",
+      "summary": "Exempel: 2 x 20 min @ 222 W / 162 bpm",
+      "if": 0.9,
+      "tss": 145,
+      "work_interval_avg_power": 222,
+      "work_interval_avg_hr": 162
+    },
+    {
+      "id": "ref-z2",
+      "date": "2025-09-20",
+      "session_type": "bike_z2",
+      "sport": "bike",
+      "environment": "indoor",
+      "summary": "Exempel: 90 min @ 165 W / 135 bpm",
+      "duration_s": 5400,
+      "avg_power": 165,
+      "avg_hr": 135
+    },
+    {
+      "id": "ref-run-easy",
+      "date": "2025-09-20",
+      "session_type": "run_easy",
+      "sport": "run",
+      "summary": "Exempel: 5 km lugnt",
+      "distance_km": 5.0
+    }
+  ],
+  "change_log": [
+    {
+      "date": "2026-01-01",
+      "change": "Exempelprofil.",
+      "by": "template"
+    }
+  ]
+}

@@ -1,0 +1,69 @@
+{
+  "as_of": "2026-01-01",
+  "goals": [
+    {
+      "id": "G-CONTINUITY",
+      "sport": "all",
+      "horizon": "ongoing",
+      "priority": 1,
+      "title": "Kontinuitet och symptomkontroll",
+      "metric": {
+        "name": "weeks_without_red",
+        "baseline": null,
+        "target": null,
+        "unit": "weeks"
+      },
+      "deadline": null,
+      "status": "active",
+      "history": [
+        {
+          "date": "2026-01-01",
+          "change": "Exempel"
+        }
+      ]
+    },
+    {
+      "id": "G-FTP",
+      "sport": "bike",
+      "horizon": "short",
+      "priority": 2,
+      "title": "Exempel: FTP 230 → 245 W",
+      "metric": {
+        "name": "ftp_w",
+        "baseline": 230,
+        "target": 245,
+        "unit": "W"
+      },
+      "deadline": "2026-04-01",
+      "test_protocol": "Exempel: ramptest i valfri app, samma trainer och förhållanden",
+      "status": "active",
+      "history": [
+        {
+          "date": "2026-01-01",
+          "change": "Exempel"
+        }
+      ]
+    },
+    {
+      "id": "G-RUN-10K",
+      "sport": "run",
+      "horizon": "medium",
+      "priority": 3,
+      "title": "Exempel: 10 km under 46:00",
+      "metric": {
+        "name": "race_time",
+        "baseline": "47:00",
+        "target": "<46:00",
+        "unit": "mm:ss"
+      },
+      "deadline": "2026-09-01",
+      "status": "active",
+      "history": [
+        {
+          "date": "2026-01-01",
+          "change": "Exempel"
+        }
+      ]
+    }
+  ]
+}

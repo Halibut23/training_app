@@ -1,0 +1,6 @@
+# Core is stdlib-only (DESIGN D-013). These enable Garmin fetch, FIT import and schema validation.
+# garminconnect >= 0.3 needs Python >= 3.12 (DESIGN C-T1, B-004). 0.2.x (garth) is blocked by Garmin since 2026-03.
+garminconnect>=0.3.5,<0.4
+curl_cffi>=0.7          # TLS impersonation used by garminconnect's login
+fitdecode>=0.10
+jsonschema>=4.20
