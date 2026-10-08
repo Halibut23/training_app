@@ -33,8 +33,8 @@ def _import_lib():
             ver = "0"
     if int(str(ver).split(".")[0]) == 0 and int(str(ver).split(".")[1]) < 3:
         raise GarminUnavailable(
-            f"garminconnect {ver} använder garth, vilket Garmin blockerar sedan mars 2026 (401). "
-            "Kräver garminconnect >= 0.3 (Python >= 3.12) + curl_cffi. Se README och DESIGN B-004."
+            f"garminconnect {ver} uses garth, which Garmin has blocked since March 2026 (401). "
+            "Requires garminconnect >= 0.3 (Python >= 3.12) + curl_cffi. See README and DESIGN B-004."
         )
     return garminconnect
 
@@ -63,26 +63,26 @@ def connect(paths: Paths, interactive: bool = False):
             api.login(tokenstore)
             return api
         except Exception as e:  # tokens expired / invalid
-            print(f"[garmin] Sparade tokens fungerade inte ({type(e).__name__}), loggar in igen.", file=sys.stderr)
+            print(f"[garmin] Saved tokens did not work ({type(e).__name__}), logging in again.", file=sys.stderr)
     # 2) credentials
     email, pw = _credentials(paths)
     if interactive:
-        email = email or input("Garmin e-post: ")
-        pw = pw or getpass.getpass("Garmin lösenord: ")
+        email = email or input("Garmin email: ")
+        pw = pw or getpass.getpass("Garmin password: ")
     if not email or not pw:
         raise GarminUnavailable(
-            "Inga Garmin-uppgifter. Lägg GARMIN_EMAIL/GARMIN_PASSWORD i .env och kör "
-            "'python -m trainer login' i en egen terminal."
+            "No Garmin credentials. Put GARMIN_EMAIL/GARMIN_PASSWORD in .env and run "
+            "'python -m trainer login' in your own terminal."
         )
-    kwargs = {"prompt_mfa": (lambda: input("MFA-kod från Garmin: "))} if interactive else {}
+    kwargs = {"prompt_mfa": (lambda: input("MFA code from Garmin: "))} if interactive else {}
     api = gc.Garmin(email=email, password=pw, **kwargs)
     try:
         api.login(tokenstore)  # also writes garmin_tokens.json
     except Exception as e:
         raise GarminUnavailable(
-            f"Inloggning misslyckades ({type(e).__name__}: {str(e)[:200]}). "
-            "Kontrollera: garminconnect >= 0.3 + curl_cffi installerat (DESIGN B-004), "
-            "rätt lösenord i .env, och kör 'python -m trainer login' interaktivt om MFA krävs."
+            f"Login failed ({type(e).__name__}: {str(e)[:200]}). "
+            "Check: garminconnect >= 0.3 + curl_cffi installed (DESIGN B-004), "
+            "correct password in .env, and run 'python -m trainer login' interactively if MFA is required."
         ) from e
     return api
 

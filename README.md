@@ -1,42 +1,44 @@
-# training_app — agent-driven träningsplanering (PoC)
+# training_app — agent-driven training planning (PoC)
 
-Claude är coachen; Python-verktygen hämtar och analyserar Garmin-data. Arbetet är spec-drivet:
+Claude is the coach; the Python tools fetch and analyse Garmin data. The work is spec-driven:
 
-- `CLAUDE.md` — regler agenten alltid följer
-- `docs/DESIGN.md` — designval, begränsningar, kända buggar, nice-to-haves (levande)
-- `docs/COACHING_SPEC.md` — coachingregler med ID (levande)
-- `data/athlete/profile.json` / `goals.json` — utgångsläge och mål
-- `plans/YYYY-Www.json|.md` — veckoplaner · `log/coach_log.md` — beslutslogg
+- `CLAUDE.md` — rules the agent always follows
+- `docs/DESIGN.md` — design decisions, constraints, known bugs, nice-to-haves (living)
+- `docs/COACHING_SPEC.md` — coaching rules with IDs (living)
+- `data/athlete/profile.json` / `goals.json` — starting point and goals
+- `plans/YYYY-Www.json|.md` — weekly plans · `log/coach_log.md` — decision log
 
-## Kom igång (Windows, en gång)
+Language (DESIGN D-008): code, schemas and docs are in English; plans, the coach log and athlete-facing text are in Swedish.
+
+## Getting started (Windows, once)
 
 ```powershell
-cd <sökväg>\training_app
-py -3.12 -m venv .venv      # kräver Python >= 3.12 (garminconnect >= 0.3)
+cd <path>\training_app
+py -3.12 -m venv .venv      # requires Python >= 3.12 (garminconnect >= 0.3)
 .venv\Scripts\activate
 pip install -r requirements.txt
-python -m trainer init      # skapar profile/goals/season_plan från *.example.* om de saknas
-copy .env.example .env      # fyll i GARMIN_EMAIL / GARMIN_PASSWORD i .env
-python -m trainer login     # interaktiv inloggning (MFA-kod om du har det)
-python -m trainer sync --days 120   # första hämtningen: ~4 månaders historik
+python -m trainer init      # creates profile/goals/season_plan from *.example.* if missing
+copy .env.example .env      # fill in GARMIN_EMAIL / GARMIN_PASSWORD in .env
+python -m trainer login     # interactive login (MFA code if you have it enabled)
+python -m trainer sync --days 120   # first fetch: ~4 months of history
 python -m unittest discover -s tests
 ```
 
-Inloggningstokens sparas i `.garmin_tokens/`, så `sync` fungerar sedan utan lösenord tills de löper ut.
+Login tokens are stored in `.garmin_tokens/`, so `sync` then works without a password until they expire.
 
-## Varje vecka
+## Every week
 
-Säg till Claude: **"Gör veckoplanen"**. Agenten kör `sync` → frågar efter check-in (primär begränsning, RPE, styrka, sömn) → `context` → skriver planen → `validate`/`render` → loggar beslutet.
-Om agenten inte når Garmin från sin miljö: kör `python -m trainer sync` själv först.
+Tell Claude: **"Gör veckoplanen"** (make the weekly plan). The agent runs `sync` → asks for the check-in (primary limiter, RPE, strength, sleep) → `context` → writes the plan → `validate`/`render` → logs the decision.
+If the agent can't reach Garmin from its environment: run `python -m trainer sync` yourself first.
 
-Övrigt:
-- **"Revidera planen"** mitt i veckan — nytt revisionsnummer, utförda dagar lämnas orörda.
-- **"Ändra mål …"** — uppdaterar `goals.json` med historik och kontrollerar planen.
-- Ingen Garmin-åtkomst? Lägg `.fit`-filer i `data/inbox/` eller fyll i `data/inbox/manual_sessions.csv`, kör `python -m trainer import` och `normalize`.
+Other requests:
+- **"Revidera planen"** (revise the plan) mid-week — new revision number; completed days are left untouched.
+- **"Ändra mål …"** (change goal …) — updates `goals.json` with history and re-checks the plan.
+- No Garmin access? Put `.fit` files in `data/inbox/` or fill in `data/inbox/manual_sessions.csv`, then run `python -m trainer import` and `normalize`.
 
-## Kommandon
-`login · fetch · import · normalize · sync · status · checkin · context · new-plan · validate · render` — se `docs/DESIGN.md` §2.2.
+## Commands
+`login · fetch · import · normalize · sync · status · checkin · context · new-plan · validate · render` — see `docs/DESIGN.md` §2.2.
 
-## Git och personlig data
-Koden, scheman, tester och SDD-specarna (`CLAUDE.md`, `docs/*.md`) versioneras. All personlig data (profil, mål, säsongsplan, check-ins, planer, coach-logg, Garmin-data, hand-off, `.env`, tokens) är git-ignorerad, se `.gitignore` och `docs/DESIGN.md` D-015.
-Specarna refererar till personliga värden via nyckel (t.ex. `profile.run.easy_hr_cap_bpm`). Testet `TestPrivacy` larmar om namn, PB-tider eller måltitlar hamnar i en spårad fil.
+## Git and personal data
+The code, schemas, tests and SDD specs (`CLAUDE.md`, `docs/*.md`) are version-controlled. All personal data (profile, goals, season plan, check-ins, plans, coach log, Garmin data, hand-off, `.env`, tokens) is git-ignored; see `.gitignore` and `docs/DESIGN.md` D-015.
+The specs refer to personal values by key (e.g. `profile.run.easy_hr_cap_bpm`). The `TestPrivacy` test flags names, PB times or goal titles that end up in a tracked file.

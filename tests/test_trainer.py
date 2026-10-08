@@ -153,8 +153,8 @@ class TestPlans(unittest.TestCase):
         sk["rationale"]["rules_applied"] = ["R-XXX-99"]
         sk["sessions"][0]["date"] = "2026-10-01"
         errs, _ = plans.validate(sk, self.p)
-        self.assertTrue(any("utanför" in e for e in errs))
-        self.assertTrue(any("Okända" in e for e in errs))
+        self.assertTrue(any("outside the week" in e for e in errs))
+        self.assertTrue(any("Unknown rule IDs" in e for e in errs))
 
     def test_committed_plans_valid_and_rendered(self):
         for f in sorted((ROOT / "plans").glob("*.json")):

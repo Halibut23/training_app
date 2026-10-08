@@ -9,7 +9,7 @@
 | Owner | see git history |
 | Status | PoC |
 | Last updated | 2026-10-08 |
-| Spec version | 0.3.4 |
+| Spec version | 0.3.5 |
 
 ---
 
@@ -207,6 +207,7 @@ Athlete-specific constraints are data, not spec (D-015): budget and strength in 
 
 | Date | Version | Change |
 |---|---|---|
+| 2026-10-08 | 0.3.5 | D-008 enforced: README, CLI/login messages and plan-validation errors translated to English. Athlete-facing output (rendered plans, context file, coaching warnings, weekday/session labels) stays Swedish. |
 | 2026-10-08 | 0.3.4 | A6 clean-up before sharing: personal values (FTP, LTHR, test equipment) in D-006, C-M2, OQ-2/3 replaced by profile keys; limiter-neutral wording in analysis/context messages and README; tests use invented FTP. |
 | 2026-10-06 | 0.3.3 | C-M7 HR-source rule; check-in `sessions[].hr_sensor`; normalize carries it to activities; CLAUDE.md C3b. |
 | 2026-10-06 | 0.3.2 | CLAUDE.md C3a: HR anchors updated only after the athlete confirms chest strap. |

@@ -44,12 +44,12 @@ def main(argv=None) -> int:
         for ex in sorted(paths.data.rglob("*.example.*")):
             real = ex.with_name(ex.name.replace(".example", ""))
             if real.exists():
-                print(f"finns redan: {real.relative_to(paths.root)}")
+                print(f"already exists: {real.relative_to(paths.root)}")
             else:
                 shutil.copy2(ex, real)
-                print(f"skapade {real.relative_to(paths.root)} från exempel — redigera med dina egna värden")
+                print(f"created {real.relative_to(paths.root)} from example — edit it with your own values")
         if not paths.env.exists():
-            print("Kopiera .env.example till .env och fyll i Garmin-uppgifterna.")
+            print("Copy .env.example to .env and fill in your Garmin credentials.")
     elif a.cmd == "login":
         from .garmin_client import login
         login(paths)
@@ -95,7 +95,7 @@ def main(argv=None) -> int:
         week = a.week or next_week()
         out = paths.plans / f"{week}.json"
         if out.exists():
-            print(f"{out} finns redan — revidera i stället (CLAUDE.md E).", file=sys.stderr)
+            print(f"{out} already exists — revise it instead (CLAUDE.md E).", file=sys.stderr)
             return 1
         write_json(out, plans.skeleton(week))
         print(f"Skapade {out}")

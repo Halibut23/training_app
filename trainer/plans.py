@@ -68,38 +68,38 @@ def validate(plan: dict, paths: Paths, profile: dict | None = None) -> tuple[lis
         return errors, warnings
     s, e = week_bounds(plan["week"])
     if plan["start_date"] != s.isoformat() or plan["end_date"] != e.isoformat():
-        errors.append(f"start/end_date matchar inte {plan['week']} ({s}–{e})")
+        errors.append(f"start/end_date do not match {plan['week']} ({s}–{e})")
     ids = [x["id"] for x in plan["sessions"]]
     if len(ids) != len(set(ids)):
-        errors.append("Dubbla sessions-id")
+        errors.append("Duplicate session ids")
     for x in plan["sessions"]:
         if not (s <= parse_date(x["date"]) <= e):
-            errors.append(f"{x['id']}: datum {x['date']} utanför veckan")
+            errors.append(f"{x['id']}: date {x['date']} outside the week")
         if x["sport"] == "run" and "run" not in x["session_type"]:
-            errors.append(f"{x['id']}: sport run men typ {x['session_type']}")
+            errors.append(f"{x['id']}: sport run but type {x['session_type']}")
         if x["sport"] == "bike" and "bike" not in x["session_type"]:
-            errors.append(f"{x['id']}: sport bike men typ {x['session_type']}")
+            errors.append(f"{x['id']}: sport bike but type {x['session_type']}")
     if plan["revision_history"][-1]["revision"] != plan["revision"]:
-        errors.append("revision matchar inte sista revision_history-posten")
+        errors.append("revision does not match the last revision_history entry")
     known = known_rule_ids(paths.root / "docs" / "COACHING_SPEC.md")
     unknown = [r for r in plan["rationale"]["rules_applied"] if known and r not in known]
     if unknown:
-        errors.append(f"Okända regel-ID: {unknown}")
+        errors.append(f"Unknown rule IDs: {unknown}")
     # soft checks
     hours = sum(x["duration_min"] for x in plan["sessions"]) / 60
     if abs(hours - plan["targets"]["hours"]) > 0.25:
-        warnings.append(f"Summa pass {hours:.2f} h ≠ targets.hours {plan['targets']['hours']}")
+        warnings.append(f"Session total {hours:.2f} h ≠ targets.hours {plan['targets']['hours']}")
     run_km = sum(x.get("distance_km") or 0 for x in plan["sessions"] if x["sport"] == "run")
     if "run_km" in plan["targets"] and abs(run_km - plan["targets"]["run_km"]) > 0.5:
-        warnings.append(f"Summa löp-km {run_km} ≠ targets.run_km {plan['targets']['run_km']}")
+        warnings.append(f"Run km total {run_km} ≠ targets.run_km {plan['targets']['run_km']}")
     n_str = sum(1 for x in plan["sessions"] if x["sport"] == "strength")
     if n_str < 2:
-        warnings.append(f"{n_str} styrkepass (R-STR-01: 2)")
+        warnings.append(f"{n_str} strength sessions (R-STR-01: 2)")
     hard = sorted(parse_date(x.get("completed_date") or x["date"]) for x in plan["sessions"]
                   if x["session_type"] in ("bike_threshold", "bike_vo2", "bike_test", "run_quality"))
     for a, b in zip(hard, hard[1:]):
         if (b - a).days <= 1:
-            warnings.append(f"Kvalitetspass {a} och {b} i följd (R-GEN-07)")
+            warnings.append(f"Quality sessions {a} and {b} on consecutive days (R-GEN-07)")
     if profile:
         lo, hi = profile["budget"]["normal_range_hours"]
         if hours > hi + 1:
