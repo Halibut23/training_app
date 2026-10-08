@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import datetime as dt
 
+from .i18n import lang_of, tr
 from . import analysis
 from .config import Paths, read_json, write_json
 from .normalize import load
@@ -71,6 +72,7 @@ def build(paths: Paths, week: str, today: dt.date | None = None) -> dict:
         "wellness": {k: v for k, v in wsum.items() if k != "daily"},
         "sessions": sessions,
         "flags": analysis.flags(acts, weekly, checkin, wsum, pmc_rows, profile, review),
+        "language": lang_of(profile),
     }
     return ctx
 
@@ -90,33 +92,39 @@ def _fmt(v, key=None):
 
 
 def to_markdown(ctx: dict) -> str:
-    L = [f"# Kontext för planering {ctx['plan_week']} ({ctx['plan_dates'][0]} – {ctx['plan_dates'][1]})",
-         f"Genererad {ctx['generated']} · granskningsvecka {ctx['review_week']}", ""]
-    L += ["## Flaggor (regelbaserade)"]
-    L += [f"- **{f['level'].upper()}** `{f['rule']}` {f['msg']}" for f in ctx["flags"]] or ["- Inga"]
-    L += ["", "## Mål"]
-    L += [f"- P{g['priority']} {g['title']} — deadline {_fmt(g['deadline'])} ({_fmt(g['days_left'])} dagar)" for g in ctx["goals"]]
+    lang = ctx.get("language", "sv")
+
+    def T(key, **kw):
+        return tr(lang, key, **kw)
+
+    L = [f"# {T('ctx_title')} {ctx['plan_week']} ({ctx['plan_dates'][0]} – {ctx['plan_dates'][1]})",
+         T("generated", ts=ctx["generated"], week=ctx["review_week"]), ""]
+    L += [f"## {T('flags')}"]
+    L += [f"- **{f['level'].upper()}** `{f['rule']}` {f['msg']}" for f in ctx["flags"]] or [f"- {T('none')}"]
+    L += ["", f"## {T('goals')}"]
+    L += [f"- P{g['priority']} {g['title']} — deadline {_fmt(g['deadline'])} ({_fmt(g['days_left'])} {T('days')})" for g in ctx["goals"]]
     p = ctx["profile"]
-    L += ["", "## Profil", f"- FTP {p['ftp_w']} W · begränsningsstatus: {p['injury_status']} · löpning nu: {p['run']['current_structure']}",
-          f"- LTHR kalibrerad: {p['run']['lthr_is_calibrated']}"]
-    L += ["", "## Veckobelastning (8 v)", "| Vecka | h | Cykel h | Löp km | Styrka n | TSS | Hårda |", "|---|---:|---:|---:|---:|---:|---:|"]
+    L += ["", f"## {T('profile')}", f"- FTP {p['ftp_w']} W · {T('limiter_status')}: {p['injury_status']} · {T('run_now')}: {p['run']['current_structure']}",
+          f"- {T('lthr_calibrated')}: {p['run']['lthr_is_calibrated']}"]
+    L += ["", f"## {T('weekly_load')}", T("load_head"), "|---|---:|---:|---:|---:|---:|---:|"]
     L += [f"| {r['week']} | {r['hours']} | {r['bike_h']} | {r['run_km']} | {r['strength_n']} | {r['tss']:g} | {r['hard_n']} |" for r in ctx["weekly_load"]]
     if ctx["pmc_last"]:
         m = ctx["pmc_last"]
-        L += ["", f"CTL {m['ctl']} · ATL {m['atl']} · TSB {m['tsb']} (historik {ctx['pmc_history_days']} d; <42 d = osäkert)"]
+        L += ["", f"CTL {m['ctl']} · ATL {m['atl']} · TSB {m['tsb']} ({T('pmc_note', d=ctx['pmc_history_days'])})"]
     w = ctx["wellness"]
-    L += ["", "## Återhämtning", f"- HRV 3d/14d: {_fmt(w['hrv_avg_3d'])}/{_fmt(w['hrv_avg_14d'])} ms (baslinje {w['baseline'].get('hrv_ms')})",
-          f"- Vilopuls 3d/14d: {_fmt(w['rhr_avg_3d'])}/{_fmt(w['rhr_avg_14d'])} (baslinje {w['baseline'].get('rhr_bpm')})",
-          f"- Sömn 3d/14d: {_fmt(w['sleep_avg_3d_h'])}/{_fmt(w['sleep_avg_14d_h'])} h"]
-    L += ["", "## Plan vs utfört (föregående vecka)"]
+    L += ["", f"## {T('recovery')}", f"- HRV 3d/14d: {_fmt(w['hrv_avg_3d'])}/{_fmt(w['hrv_avg_14d'])} ms ({T('baseline')} {w['baseline'].get('hrv_ms')})",
+          f"- {T('rhr')} 3d/14d: {_fmt(w['rhr_avg_3d'])}/{_fmt(w['rhr_avg_14d'])} ({T('baseline')} {w['baseline'].get('rhr_bpm')})",
+          f"- {T('sleep')} 3d/14d: {_fmt(w['sleep_avg_3d_h'])}/{_fmt(w['sleep_avg_14d_h'])} h"]
+    L += ["", f"## {T('plan_vs_done')}"]
     if ctx["compliance"]:
-        L += ["| Datum | Planerat | Typ plan → utfört | min plan → utfört | TSS | Status |", "|---|---|---|---|---:|---|"]
+        L += [T("compl_head"), "|---|---|---|---|---:|---|"]
+        moved = f" ({T('moved')})"
         for c in ctx["compliance"]:
             L.append(f"| {c['date']} | {c.get('planned', '–')} | {c.get('planned_type', '–')} → {c.get('actual_type', '–')} | "
-                     f"{_fmt(c.get('planned_min'))} → {_fmt(c.get('actual_min'))} | {_fmt(c.get('actual_tss'))} | {c['status']}{' (flyttat)' if c.get('moved') else ''} |")
+                     f"{_fmt(c.get('planned_min'))} → {_fmt(c.get('actual_min'))} | {_fmt(c.get('actual_tss'))} | {c['status']}{moved if c.get('moved') else ''} |")
     else:
-        L.append("- Ingen tidigare plan.")
-    L += ["", "## Pass senaste 2 veckorna med referensjämförelse"]
+        L.append(f"- {T('no_prev_plan')}")
+    L += ["", f"## {T('recent_sessions')}"]
     for s in ctx["sessions"]:
         a = s["session"]
         L.append(f"- **{a.get('date')} {a.get('type')}** “{a.get('name') or ''}” — "
@@ -126,7 +134,7 @@ def to_markdown(ctx: dict) -> str:
             L.append(f"  - ref {r.get('date') or r.get('id')}: " + ", ".join(f"Δ{k} {v:+g}" for k, v in s["delta"].items())
                      + (f" — {r['summary']}" if r.get("summary") else ""))
     ci = ctx["checkin"]
-    L += ["", "## Check-in", "```json", __import__("json").dumps(ci, ensure_ascii=False, indent=1) if ci else "saknas", "```"]
+    L += ["", "## Check-in", "```json", __import__("json").dumps(ci, ensure_ascii=False, indent=1) if ci else T("missing"), "```"]
     return "\n".join(L) + "\n"
 
 

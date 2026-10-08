@@ -9,7 +9,7 @@
 | Owner | see git history |
 | Status | PoC |
 | Last updated | 2026-10-08 |
-| Spec version | 0.3.5 |
+| Spec version | 0.5.0 |
 
 ---
 
@@ -78,12 +78,14 @@ Empty ignored folders keep a tracked `.gitkeep` so a fresh clone has the full st
 - **Rule:** everything that describes *the system* (code, schemas, tests, SDD specs, example files) is versioned; everything that describes *the athlete* (health, training data, plans, logs, goals, dates of personal events, credentials) is git-ignored.
 - Tracked specs refer to athlete values by key (`profile.run.easy_hr_cap_bpm`) and use invented values in examples (CLAUDE.md A6).
 - A fresh clone works with `python -m trainer init`, which copies `*.example.*` to the real file names if they are missing; tests run against the example files only.
+- The copied profile still carries `source: "INVENTED EXAMPLE …"`. Until onboarding (CLAUDE.md §0b, D-017) replaces it, the planning commands refuse to run (D-017).
 - Before a commit: `git status` must show no files under `data/` (except `*.example.*`, `.gitkeep`), `plans/`, `log/`, `docs/reference/`.
 
 ### 2.2 CLI
 
 ```
 python -m trainer init                  # copy *.example.* templates to profile/goals/season plan if missing
+                                        # flag on every command: --allow-example runs planning commands on the example profile (demo/testing only, D-017)
 python -m trainer login                 # interactive, one-time (MFA) – run by the athlete in a terminal
 python -m trainer fetch [--days 21]     # Garmin → data/raw (activities, laps, HRV, RHR, sleep)
 python -m trainer import                # data/inbox → data/raw (FIT) / manual CSV
@@ -110,7 +112,7 @@ Add new decisions at the bottom. Never delete; mark superseded ones.
 | D-005 | 2026-10-01 | Raw data immutable; derived data rebuildable from raw at any time. | Re-running with new metric logic must not require re-fetching. | Active |
 | D-006 | 2026-10-01 | Load metrics computed by us from profile FTP (not Garmin's TSS) when power exists. | Garmin's FTP setting may differ from the working FTP (`profile.bike.ftp_w`); consistency across sources. Garmin TSS kept as `garmin_tss` for reference. | Active |
 | D-007 | 2026-10-01 | Plans are JSON (schema-validated) + rendered Markdown. JSON is source of truth. | Machine-readable for future React view; Markdown for reading. | Active |
-| D-008 | 2026-10-01 | Docs/code in English; plans, coach log and athlete-facing text in Swedish. | User preference. | Active |
+| D-008 | 2026-10-01 | Docs/code in English; plans, coach log and athlete-facing text in Swedish. | User preference. | Refined by D-018 |
 | D-009 | 2026-10-01 | Plan revisions are kept inside the same week file (`revision` + `revision_history`), not new files. | One file per week; history still traceable. | Active |
 | D-010 | 2026-10-01 | Coaching rules have stable IDs (e.g. `R-RUN-02`); plans cite rule IDs in `rationale.rules_applied`. | Traceability from decision to rule. | Active |
 | D-011 | 2026-10-01 | Session matching uses a rule-based `session_type` classifier (IF + lap structure), references include hand-off sessions. | Compare like with like (hand-off §19 step 3). | Active |
@@ -119,6 +121,8 @@ Add new decisions at the bottom. Never delete; mark superseded ones.
 | D-014 | 2026-10-01 | Use `garminconnect` ≥ 0.3 (native auth, `curl_cffi` TLS impersonation, tokens in `.garmin_tokens/garmin_tokens.json`); drop garth. Refines D-003/D-004. | garth-based login returns 401 since Garmin's Cloudflare/TLS-fingerprint change (Mar 2026). | Active |
 | D-015 | 2026-10-01 | Git: system (code, schemas, tests, SDD specs, examples) tracked; athlete data (profile, goals, season plan, check-ins, plans, logs, raw/derived data, hand-off, secrets) ignored. Specs reference personal values by key. | Share the system with colleagues without exposing health/training data. | Active |
 | D-016 | 2026-10-03 | Plans are order-independent menus: `placement_rules` (plan) and `completed_date` (session, may precede the week) in the schema; compliance matches planned↔done by session type over week start − 7 d … week end, never by exact date. | Athlete reorders sessions by purpose/intensity (R-GEN-11/12). | Active |
+| D-017 | 2026-10-08 | New athletes are onboarded before any planning: CLAUDE.md §0b (setup → history sync → intake interview → derive from data → write profile/goals/season plan → log). Example-profile guard: while `profile.json` is missing or `profile.source` starts with `INVENTED EXAMPLE`, `checkin`, `context` and `new-plan` exit with code 3; `status`, `validate`, `render` only warn. Override with `--allow-example`. | Shared repo (D-015): a friend's fresh clone must not be coached on invented numbers (CLAUDE.md F5). The marker already exists in the example file, so no new data field is needed. | Active |
+| D-018 | 2026-10-08 | Athlete language is `profile.language` (`sv` \| `en`, default `sv`). Chat, interview, check-in, plans, coach log and generated athlete-facing text (rendered plans, context file, rule-flag messages) use it; all strings live in `trainer/i18n.py`. Code, schemas, specs, CLI and validation messages stay English (D-008). During onboarding the agent answers in the language the athlete writes in and stores it. | The repo is shared; non-Swedish friends must get English questions from the first message. One string table keeps both languages in sync. | Active |
 
 ## 4. Constraints
 
@@ -202,11 +206,14 @@ Athlete-specific constraints are data, not spec (D-015): budget and strength in 
 | N-8 | Use variability index (NP/avg) and lap structure to separate outdoor 'hard by terrain' from structured intervals. | Better classification (B-007) |
 | N-9 | Auto-detect max-HR candidates (and later LTHR) with the C-M6 plausibility rule and flag them in `context` as a question to the athlete (never auto-update, C3a). | Correct zones without manual digging |
 | N-7 | Weather/daylight input for outdoor vs trainer choice. | Planning realism |
+| N-10 | ~~`profile.language` (sv/en) for athlete-facing output.~~ **Done in 0.5.0 (D-018).** | – |
 
 ## 9. Changelog
 
 | Date | Version | Change |
 |---|---|---|
+| 2026-10-08 | 0.5.0 | D-018: `profile.language` (sv/en); athlete-facing strings moved to `trainer/i18n.py`; `render`/`skeleton`/`context`/flags follow the profile language; onboarding detects language (CLAUDE.md §0b). N-10 done. |
+| 2026-10-08 | 0.4.0 | D-017: onboarding procedure for new athletes (CLAUDE.md §0b) and example-profile guard (`--allow-example`); README getting-started step; remaining Swedish CLI messages translated (D-008); N-10 language setting. |
 | 2026-10-08 | 0.3.5 | D-008 enforced: README, CLI/login messages and plan-validation errors translated to English. Athlete-facing output (rendered plans, context file, coaching warnings, weekday/session labels) stays Swedish. |
 | 2026-10-08 | 0.3.4 | A6 clean-up before sharing: personal values (FTP, LTHR, test equipment) in D-006, C-M2, OQ-2/3 replaced by profile keys; limiter-neutral wording in analysis/context messages and README; tests use invented FTP. |
 | 2026-10-06 | 0.3.3 | C-M7 HR-source rule; check-in `sessions[].hr_sensor`; normalize carries it to activities; CLAUDE.md C3b. |

@@ -1,6 +1,7 @@
 {
   "athlete": "Exempel Atlet",
   "as_of": "2026-01-01",
+  "language": "sv",
   "source": "INVENTED EXAMPLE — template and test fixture (DESIGN D-015). Copy to profile.json with `python -m trainer init`.",
   "budget": {
     "avg_hours_per_week": 6.0,

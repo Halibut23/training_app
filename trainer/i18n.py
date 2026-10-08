@@ -1,0 +1,208 @@
+"""Athlete-facing text in Swedish and English (DESIGN D-018). Code, CLI and logs stay English (D-008)."""
+from __future__ import annotations
+
+LANGS = ("sv", "en")
+DEFAULT = "sv"
+
+
+def lang_of(profile: dict | None) -> str:
+    """`profile.language`; missing or unknown → Swedish (profiles created before D-018)."""
+    v = (profile or {}).get("language", DEFAULT)
+    return v if v in LANGS else DEFAULT
+
+
+DAYS = {
+    "sv": ["Måndag", "Tisdag", "Onsdag", "Torsdag", "Fredag", "Lördag", "Söndag"],
+    "en": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
+}
+
+TYPE = {
+    "sv": {"bike_recovery": "Cykel återhämtning", "bike_z2": "Cykel Z2", "bike_long": "Cykel långpass",
+           "bike_tempo": "Cykel tempo", "bike_sweetspot": "Cykel sweet spot", "bike_threshold": "Cykel tröskel",
+           "bike_vo2": "Cykel VO2", "bike_test": "Cykel test", "run_easy": "Löpning lugn",
+           "run_quality": "Löpning kvalitet", "run_long": "Löpning lång", "strength": "Styrka", "rest": "Vila",
+           "other": "Övrigt"},
+    "en": {"bike_recovery": "Bike recovery", "bike_z2": "Bike Z2", "bike_long": "Bike long ride",
+           "bike_tempo": "Bike tempo", "bike_sweetspot": "Bike sweet spot", "bike_threshold": "Bike threshold",
+           "bike_vo2": "Bike VO2", "bike_test": "Bike test", "run_easy": "Easy run",
+           "run_quality": "Run quality", "run_long": "Long run", "strength": "Strength", "rest": "Rest",
+           "other": "Other"},
+}
+PRIO = {
+    "sv": {"key": "Nyckelpass", "supporting": "Stödjande", "optional": "Valfritt"},
+    "en": {"key": "Key session", "supporting": "Supporting", "optional": "Optional"},
+}
+STATUS = {
+    "sv": {"done": "gjort", "modified": "ändrat", "missed": "missat", "replaced": "ersatt"},
+    "en": {"done": "done", "modified": "modified", "missed": "missed", "replaced": "replaced"},
+}
+ADJ = {
+    "sv": {"progression": "Progression", "hold": "Bibehåll", "deload": "Avlastning",
+           "replacement": "Ersättning", "restructure": "Omstrukturering"},
+    "en": {"progression": "Progression", "hold": "Hold", "deload": "Deload",
+           "replacement": "Replacement", "restructure": "Restructure"},
+}
+
+_T = {
+    "sv": {
+        # plan skeleton
+        "pr_48h": "Minst 48 h mellan nyckelpass med kvalitet (R-GEN-07).",
+        "pr_vo2": "Inte VO2 dagen efter ett pass med TSS > 150.",
+        "pr_strength": "Tung benstyrka inte dagen före ett nyckelpass eller löppass (R-STR-03).",
+        "rest_title": "Vila",
+        "first_version": "Första version",
+        # plan render
+        "hr": "puls",
+        "rest_between": "vila",
+        "plan_title": "Träningsplan",
+        "phase": "fas",
+        "adjustment": "justering",
+        "focus": "Fokus",
+        "week_targets": "Mål för veckan",
+        "bike": "cykel",
+        "running": "löpning",
+        "strength_n": "styrka {n} pass",
+        "done_before": "varav {min} min redan gjort före veckan",
+        "days_note": "_Dagarna är ett förslag. Passen kan flyttas inom veckan (eller till intilliggande dagar) så länge "
+                     "placeringsreglerna nedan hålls. Det viktiga är syftet och ungefärlig intensitet (R-GEN-11)._",
+        "table_head": "| Dag (förslag) | Pass | Prio | Tid | Innehåll |",
+        "session_details": "Passdetaljer",
+        "purpose": "Syfte",
+        "instruction": "Instruktion",
+        "plan_b": "Plan B",
+        "est_tss": "Uppskattad TSS",
+        "placement_rules": "Placeringsregler (när du flyttar pass)",
+        "decision_rules": "Beslutsregler denna vecka",
+        "rationale": "Motivering",
+        "data_basis": "Underlag",
+        "comparisons": "Jämförelser",
+        "assumptions": "Antaganden",
+        "open_questions": "Öppna frågor",
+        "rules": "Regler",
+        "revisions": "Revisioner",
+        # context
+        "ctx_title": "Kontext för planering",
+        "generated": "Genererad {ts} · granskningsvecka {week}",
+        "flags": "Flaggor (regelbaserade)",
+        "none": "Inga",
+        "goals": "Mål",
+        "days": "dagar",
+        "profile": "Profil",
+        "limiter_status": "begränsningsstatus",
+        "run_now": "löpning nu",
+        "lthr_calibrated": "LTHR kalibrerad",
+        "weekly_load": "Veckobelastning (8 v)",
+        "load_head": "| Vecka | h | Cykel h | Löp km | Styrka n | TSS | Hårda |",
+        "pmc_note": "historik {d} d; <42 d = osäkert",
+        "recovery": "Återhämtning",
+        "baseline": "baslinje",
+        "rhr": "Vilopuls",
+        "sleep": "Sömn",
+        "plan_vs_done": "Plan vs utfört (föregående vecka)",
+        "compl_head": "| Datum | Planerat | Typ plan → utfört | min plan → utfört | TSS | Status |",
+        "moved": "flyttat",
+        "no_prev_plan": "Ingen tidigare plan.",
+        "recent_sessions": "Pass senaste 2 veckorna med referensjämförelse",
+        "missing": "saknas",
+        # rule flags (analysis.flags)
+        "f_stacked": "Hårda pass dag efter dag: {d1} och {d2}.",
+        "f_big_tss": "Pass med TSS {tss} den {date} — kräver lätta dagar runt.",
+        "f_budget": "{h} h över budget ({lo}–{hi} h).",
+        "f_strength": "{n} styrkepass registrerade (mål {target}). Bekräfta i check-in.",
+        "f_run_jump": "Löpvolym +{km} km mot föregående vecka.",
+        "f_no_report": "Löppass utan symptomrapport — anta GUL tills atleten svarat (CLAUDE.md F1).",
+        "f_yellow": "Primär begränsning GUL denna vecka → håll/minska, ingen ny löpprogression.",
+        "f_red": "Primär begränsning RÖD → backa löpbelastningen, ersätt med cykel/vila.",
+        "f_quality": "Löpkvalitet genomförd utan bekräftad grön status för primär begränsning.",
+        "s_hrv": "HRV 3d {v} ms < baslinje {b}",
+        "s_rhr": "Vilopuls 3d {v} ≥ baslinje+4",
+        "s_sleep": "Sömn 3d {v} h",
+        "s_fatigue": "Subjektiv trötthet {v}/5",
+        "s_ill": "Sjukdom rapporterad",
+        "f_rec_multi": "Flera negativa återhämtningssignaler: {s}",
+        "f_rec_single": "Enstaka signal (ensam ej beslutsgrund): {s}",
+        "f_tsb": "TSB {tsb} — hög ackumulerad belastning.",
+        "f_no_data": "Ingen träningsdata — kör sync eller lägg filer i data/inbox/.",
+    },
+    "en": {
+        "pr_48h": "At least 48 h between key quality sessions (R-GEN-07).",
+        "pr_vo2": "No VO2 the day after a session with TSS > 150.",
+        "pr_strength": "No heavy leg strength the day before a key session or a run (R-STR-03).",
+        "rest_title": "Rest",
+        "first_version": "First version",
+        "hr": "HR",
+        "rest_between": "rest",
+        "plan_title": "Training plan",
+        "phase": "phase",
+        "adjustment": "adjustment",
+        "focus": "Focus",
+        "week_targets": "Targets this week",
+        "bike": "bike",
+        "running": "running",
+        "strength_n": "strength {n} sessions",
+        "done_before": "of which {min} min already done before the week",
+        "days_note": "_The days are a suggestion. Sessions can be moved within the week (or to adjacent days) as long as "
+                     "the placement rules below hold. What matters is the purpose and approximate intensity (R-GEN-11)._",
+        "table_head": "| Day (suggested) | Session | Priority | Time | Content |",
+        "session_details": "Session details",
+        "purpose": "Purpose",
+        "instruction": "Instructions",
+        "plan_b": "Plan B",
+        "est_tss": "Estimated TSS",
+        "placement_rules": "Placement rules (when you move sessions)",
+        "decision_rules": "Decision rules this week",
+        "rationale": "Rationale",
+        "data_basis": "Data basis",
+        "comparisons": "Comparisons",
+        "assumptions": "Assumptions",
+        "open_questions": "Open questions",
+        "rules": "Rules",
+        "revisions": "Revisions",
+        "ctx_title": "Planning context",
+        "generated": "Generated {ts} · review week {week}",
+        "flags": "Flags (rule-based)",
+        "none": "None",
+        "goals": "Goals",
+        "days": "days",
+        "profile": "Profile",
+        "limiter_status": "limiter status",
+        "run_now": "running now",
+        "lthr_calibrated": "LTHR calibrated",
+        "weekly_load": "Weekly load (8 wk)",
+        "load_head": "| Week | h | Bike h | Run km | Strength n | TSS | Hard |",
+        "pmc_note": "history {d} d; <42 d = uncertain",
+        "recovery": "Recovery",
+        "baseline": "baseline",
+        "rhr": "Resting HR",
+        "sleep": "Sleep",
+        "plan_vs_done": "Plan vs done (previous week)",
+        "compl_head": "| Date | Planned | Type plan → done | min plan → done | TSS | Status |",
+        "moved": "moved",
+        "no_prev_plan": "No previous plan.",
+        "recent_sessions": "Sessions last 2 weeks with reference comparison",
+        "missing": "missing",
+        "f_stacked": "Hard sessions on consecutive days: {d1} and {d2}.",
+        "f_big_tss": "Session with TSS {tss} on {date} — needs easy days around it.",
+        "f_budget": "{h} h over budget ({lo}–{hi} h).",
+        "f_strength": "{n} strength sessions recorded (target {target}). Confirm in check-in.",
+        "f_run_jump": "Run volume +{km} km vs previous week.",
+        "f_no_report": "Runs without a symptom report — assume YELLOW until the athlete answers (CLAUDE.md F1).",
+        "f_yellow": "Primary limiter YELLOW this week → hold/reduce, no new run progression.",
+        "f_red": "Primary limiter RED → back off run load, replace with bike/rest.",
+        "f_quality": "Run quality done without confirmed green status for the primary limiter.",
+        "s_hrv": "HRV 3d {v} ms < baseline {b}",
+        "s_rhr": "Resting HR 3d {v} ≥ baseline+4",
+        "s_sleep": "Sleep 3d {v} h",
+        "s_fatigue": "Subjective fatigue {v}/5",
+        "s_ill": "Illness reported",
+        "f_rec_multi": "Several negative recovery signals: {s}",
+        "f_rec_single": "Single signal (not a basis for decisions on its own): {s}",
+        "f_tsb": "TSB {tsb} — high accumulated load.",
+        "f_no_data": "No training data — run sync or put files in data/inbox/.",
+    },
+}
+
+
+def tr(lang: str, key: str, **kw) -> str:
+    s = _T[lang if lang in LANGS else DEFAULT][key]
+    return s.format(**kw) if kw else s

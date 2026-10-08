@@ -6,21 +6,10 @@ import re
 from pathlib import Path
 
 from .config import Paths, read_json, write_json
-from .weeks import DAYS_SV, parse_date, week_bounds
+from .i18n import ADJ, DAYS, PRIO, STATUS, TYPE, tr
+from .weeks import parse_date, week_bounds
 
-TYPE_SV = {
-    "bike_recovery": "Cykel återhämtning", "bike_z2": "Cykel Z2", "bike_long": "Cykel långpass",
-    "bike_tempo": "Cykel tempo", "bike_sweetspot": "Cykel sweet spot", "bike_threshold": "Cykel tröskel",
-    "bike_vo2": "Cykel VO2", "bike_test": "Cykel test", "run_easy": "Löpning lugn", "run_quality": "Löpning kvalitet",
-    "run_long": "Löpning lång", "strength": "Styrka", "rest": "Vila", "other": "Övrigt",
-}
-PRIO_SV = {"key": "Nyckelpass", "supporting": "Stödjande", "optional": "Valfritt"}
-STATUS_SV = {"done": "gjort", "modified": "ändrat", "missed": "missat", "replaced": "ersatt"}
-ADJ_SV = {"progression": "Progression", "hold": "Bibehåll", "deload": "Avlastning",
-          "replacement": "Ersättning", "restructure": "Omstrukturering"}
-
-
-def skeleton(week: str, today: dt.date | None = None) -> dict:
+def skeleton(week: str, today: dt.date | None = None, lang: str = "sv") -> dict:
     s, e = week_bounds(week)
     today = today or dt.date.today()
     return {
@@ -30,16 +19,16 @@ def skeleton(week: str, today: dt.date | None = None) -> dict:
         "rationale": {"summary": "", "data_basis": [], "comparisons": [], "rules_applied": ["R-GEN-02"],
                       "assumptions": [], "open_questions": []},
         "placement_rules": [
-            "Minst 48 h mellan nyckelpass med kvalitet (R-GEN-07).",
-            "Inte VO2 dagen efter ett pass med TSS > 150.",
-            "Tung benstyrka inte dagen före ett nyckelpass eller löppass (R-STR-03).",
+            tr(lang, "pr_48h"),
+            tr(lang, "pr_vo2"),
+            tr(lang, "pr_strength"),
         ],
         "decision_rules": [],
         "sessions": [
             {"id": f"{week}-{i + 1}", "date": (s + dt.timedelta(days=i)).isoformat(), "sport": "rest",
-             "session_type": "rest", "title": "Vila", "priority": "optional", "duration_min": 0, "status": "planned"}
+             "session_type": "rest", "title": tr(lang, "rest_title"), "priority": "optional", "duration_min": 0, "status": "planned"}
             for i in range(7)],
-        "revision_history": [{"revision": 0, "date": today.isoformat(), "reason": "Första version"}],
+        "revision_history": [{"revision": 0, "date": today.isoformat(), "reason": tr(lang, "first_version")}],
     }
 
 
@@ -107,7 +96,7 @@ def validate(plan: dict, paths: Paths, profile: dict | None = None) -> tuple[lis
     return errors, warnings
 
 
-def _target(t: dict | None) -> str:
+def _target(t: dict | None, lang: str = "sv") -> str:
     if not t:
         return ""
     parts = []
@@ -119,7 +108,7 @@ def _target(t: dict | None) -> str:
         f = lambda p: f"{int(p)}:{round((p % 1) * 60):02d}"
         parts.append(f"{f(lo)}–{f(hi)}/km")
     if t.get("hr_max_bpm"):
-        parts.append(f"puls ≤{t['hr_max_bpm']:g}")
+        parts.append(f"{tr(lang, 'hr')} ≤{t['hr_max_bpm']:g}")
     if t.get("rpe"):
         parts.append(f"RPE {t['rpe'][0]:g}–{t['rpe'][1]:g}")
     if t.get("cadence_rpm"):
@@ -127,7 +116,7 @@ def _target(t: dict | None) -> str:
     return ", ".join(parts)
 
 
-def _step(st: dict) -> str:
+def _step(st: dict, lang: str = "sv") -> str:
     q = []
     if st.get("reps"):
         q.append(f"{st['reps']} ×" if (st.get("duration_min") or st.get("distance_km")) else f"{st['reps']} set")
@@ -136,61 +125,64 @@ def _step(st: dict) -> str:
     if st.get("distance_km"):
         q.append(f"{st['distance_km']:g} km")
     s = f"{st['label']}: {' '.join(q)}".strip()
-    tg = _target(st.get("target"))
+    tg = _target(st.get("target"), lang)
     if tg:
         s += f" @ {tg}"
     if st.get("recovery_min"):
-        s += f" (vila {st['recovery_min']:g} min)"
+        s += f" ({tr(lang, 'rest_between')} {st['recovery_min']:g} min)"
     return s
 
 
-def render(plan: dict) -> str:
+def render(plan: dict, lang: str = "sv") -> str:
+    """Plan → Markdown in the athlete's language (D-018)."""
     t = plan["targets"]
-    L = [f"# Träningsplan {plan['week']} ({plan['start_date']} – {plan['end_date']})",
-         f"Revision {plan['revision']} · status {plan['status']} · fas: {plan['phase']} · justering: **{ADJ_SV[plan['adjustment_type']]}**", "",
-         f"**Fokus:** {plan['focus']}", "",
-         f"**Mål för veckan:** {t['hours']:g} h"
-         + (f" · cykel {t['bike_hours']:g} h" if t.get("bike_hours") is not None else "")
-         + (f" · löpning {t['run_km']:g} km" if t.get("run_km") is not None else "")
-         + (f" · styrka {t['strength_sessions']} pass" if t.get("strength_sessions") is not None else "")
+    days = DAYS[lang]
+    early = [x for x in plan["sessions"] if x.get("completed_date", plan["start_date"]) < plan["start_date"]]
+    L = [f"# {tr(lang, 'plan_title')} {plan['week']} ({plan['start_date']} – {plan['end_date']})",
+         f"Revision {plan['revision']} · status {plan['status']} · {tr(lang, 'phase')}: {plan['phase']} · "
+         f"{tr(lang, 'adjustment')}: **{ADJ[lang][plan['adjustment_type']]}**", "",
+         f"**{tr(lang, 'focus')}:** {plan['focus']}", "",
+         f"**{tr(lang, 'week_targets')}:** {t['hours']:g} h"
+         + (f" · {tr(lang, 'bike')} {t['bike_hours']:g} h" if t.get("bike_hours") is not None else "")
+         + (f" · {tr(lang, 'running')} {t['run_km']:g} km" if t.get("run_km") is not None else "")
+         + (f" · {tr(lang, 'strength_n', n=t['strength_sessions'])}" if t.get("strength_sessions") is not None else "")
          + (f" · ~{t['est_tss']:g} TSS" if t.get("est_tss") else "")
-         + (f" _(varav {sum(x['duration_min'] for x in plan['sessions'] if x.get('completed_date', plan['start_date']) < plan['start_date']):g} min redan gjort före veckan)_"
-            if any(x.get("completed_date", plan["start_date"]) < plan["start_date"] for x in plan["sessions"]) else ""), "",
-         "_Dagarna är ett förslag. Passen kan flyttas inom veckan (eller till intilliggande dagar) så länge placeringsreglerna nedan hålls. Det viktiga är syftet och ungefärlig intensitet (R-GEN-11)._", "",
-         "| Dag (förslag) | Pass | Prio | Tid | Innehåll |", "|---|---|---|---:|---|"]
+         + (f" _({tr(lang, 'done_before', min=format(sum(x['duration_min'] for x in early), 'g'))})_" if early else ""), "",
+         tr(lang, "days_note"), "",
+         tr(lang, "table_head"), "|---|---|---|---:|---|"]
     for x in sorted(plan["sessions"], key=lambda x: x.get("completed_date") or x["date"]):
         d = parse_date(x.get("completed_date") or x["date"])
-        content = "<br>".join(_step(s) for s in x.get("structure", [])) or (x.get("instructions") or "")
-        mark = "" if x["status"] == "planned" else f" ({STATUS_SV.get(x['status'], x['status'])}" + (
-            f" {DAYS_SV[parse_date(x['completed_date']).weekday()].lower()} {parse_date(x['completed_date']).day}/{parse_date(x['completed_date']).month}"
-            if x.get("completed_date") else "") + ")"
-        L.append(f"| {DAYS_SV[d.weekday()]} {d.day}/{d.month} | **{x['title']}**{mark}<br>_{TYPE_SV[x['session_type']]}_ | "
-                 f"{PRIO_SV[x['priority']]} | {x['duration_min']:g} min | {content} |")
-    L += ["", "## Passdetaljer"]
+        content = "<br>".join(_step(s, lang) for s in x.get("structure", [])) or (x.get("instructions") or "")
+        mark = ""
+        if x["status"] != "planned":
+            mark = f" ({STATUS[lang].get(x['status'], x['status'])}"
+            if x.get("completed_date"):
+                cd = parse_date(x["completed_date"])
+                mark += f" {days[cd.weekday()].lower()} {cd.day}/{cd.month}"
+            mark += ")"
+        L.append(f"| {days[d.weekday()]} {d.day}/{d.month} | **{x['title']}**{mark}<br>_{TYPE[lang][x['session_type']]}_ | "
+                 f"{PRIO[lang][x['priority']]} | {x['duration_min']:g} min | {content} |")
+    L += ["", f"## {tr(lang, 'session_details')}"]
     for x in sorted(plan["sessions"], key=lambda x: x["date"]):
         if x["sport"] == "rest":
             continue
         L.append(f"### {x['title']} ({x['date']})")
-        if x.get("purpose"):
-            L.append(f"- **Syfte:** {x['purpose']}")
-        if x.get("instructions"):
-            L.append(f"- **Instruktion:** {x['instructions']}")
-        if x.get("fallback"):
-            L.append(f"- **Plan B:** {x['fallback']}")
+        for key, label in (("purpose", "purpose"), ("instructions", "instruction"), ("fallback", "plan_b")):
+            if x.get(key):
+                L.append(f"- **{tr(lang, label)}:** {x[key]}")
         if x.get("est_tss"):
-            L.append(f"- Uppskattad TSS: {x['est_tss']:g}")
+            L.append(f"- {tr(lang, 'est_tss')}: {x['est_tss']:g}")
         L.append("")
     if plan.get("placement_rules"):
-        L += ["## Placeringsregler (när du flyttar pass)"] + [f"- {r}" for r in plan["placement_rules"]] + [""]
+        L += [f"## {tr(lang, 'placement_rules')}"] + [f"- {r}" for r in plan["placement_rules"]] + [""]
     if plan.get("decision_rules"):
-        L += ["## Beslutsregler denna vecka"] + [f"- {r}" for r in plan["decision_rules"]] + [""]
+        L += [f"## {tr(lang, 'decision_rules')}"] + [f"- {r}" for r in plan["decision_rules"]] + [""]
     r = plan["rationale"]
-    L += ["## Motivering", r["summary"], ""]
-    for key, title in (("data_basis", "Underlag"), ("comparisons", "Jämförelser"), ("assumptions", "Antaganden"),
-                       ("open_questions", "Öppna frågor")):
+    L += [f"## {tr(lang, 'rationale')}", r["summary"], ""]
+    for key in ("data_basis", "comparisons", "assumptions", "open_questions"):
         if r.get(key):
-            L += [f"**{title}**"] + [f"- {v}" for v in r[key]] + [""]
-    L += [f"**Regler:** {', '.join(r['rules_applied'])}", "", "## Revisioner"]
+            L += [f"**{tr(lang, key)}**"] + [f"- {v}" for v in r[key]] + [""]
+    L += [f"**{tr(lang, 'rules')}:** {', '.join(r['rules_applied'])}", "", f"## {tr(lang, 'revisions')}"]
     L += [f"- r{h['revision']} {h['date']}: {h['reason']}" for h in plan["revision_history"]]
     return "\n".join(L) + "\n"
 
