@@ -4,6 +4,7 @@ from __future__ import annotations
 import datetime as dt
 from collections import defaultdict
 
+from .i18n import lang_of, tr
 from . import metrics
 from .weeks import parse_date, week_bounds, week_of
 
@@ -185,6 +186,7 @@ def wellness_summary(well: list[dict], end: dt.date, profile: dict, days: int = 
 def flags(acts: list[dict], weekly: list[dict], checkin: dict | None, wsum: dict,
           pmc_rows: list[dict], profile: dict, review_week: str) -> list[dict]:
     out = []
+    lang = lang_of(profile)
     s, e = week_bounds(review_week)
     recent = sorted([a for a in acts if s - dt.timedelta(days=7) <= parse_date(a["date"]) <= e],
                     key=lambda a: a["date"])
@@ -192,10 +194,10 @@ def flags(acts: list[dict], weekly: list[dict], checkin: dict | None, wsum: dict
     hard_days = sorted({parse_date(a["date"]) for a in recent if is_hard(a) and a["sport"] in ("bike", "run")})
     for d1, d2 in zip(hard_days, hard_days[1:]):
         if (d2 - d1).days == 1:
-            out.append({"rule": "R-GEN-07", "level": "warn", "msg": f"Hårda pass dag efter dag: {d1} och {d2}."})
+            out.append({"rule": "R-GEN-07", "level": "warn", "msg": tr(lang, "f_stacked", d1=d1, d2=d2)})
     for a in recent:
         if (a.get("tss") or 0) > 300:
-            out.append({"rule": "R-BIKE-04", "level": "info", "msg": f"Pass med TSS {a['tss']} den {a['date']} — kräver lätta dagar runt."})
+            out.append({"rule": "R-BIKE-04", "level": "info", "msg": tr(lang, "f_big_tss", tss=a["tss"], date=a["date"])})
     # weekly budget + run progression
     wk = {r["week"]: r for r in weekly}
     cur = wk.get(review_week)
@@ -203,11 +205,12 @@ def flags(acts: list[dict], weekly: list[dict], checkin: dict | None, wsum: dict
     if cur:
         lo, hi = profile["budget"]["normal_range_hours"]
         if cur["hours"] > hi + 1:
-            out.append({"rule": "R-BUD-01", "level": "warn", "msg": f"{cur['hours']} h över budget ({lo}–{hi} h)."})
+            out.append({"rule": "R-BUD-01", "level": "warn", "msg": tr(lang, "f_budget", h=cur["hours"], lo=lo, hi=hi)})
         if cur["strength_n"] < profile["budget"]["strength_sessions_per_week"]:
-            out.append({"rule": "R-STR-01", "level": "info", "msg": f"{cur['strength_n']} styrkepass registrerade (mål 2). Bekräfta i check-in."})
+            out.append({"rule": "R-STR-01", "level": "info", "msg": tr(lang, "f_strength", n=cur["strength_n"],
+                                                                            target=profile["budget"]["strength_sessions_per_week"])})
         if prev and cur["run_km"] - prev["run_km"] > 2:
-            out.append({"rule": "R-RUN-07", "level": "warn", "msg": f"Löpvolym +{round(cur['run_km'] - prev['run_km'], 1)} km mot föregående vecka."})
+            out.append({"rule": "R-RUN-07", "level": "warn", "msg": tr(lang, "f_run_jump", km=round(cur["run_km"] - prev["run_km"], 1))})
     # primary limiter (check-in field `knee`, historical name)
     runs = [a for a in recent if a["sport"] == "run" and s <= parse_date(a["date"]) <= e]
     knee = (checkin or {}).get("knee", [])
@@ -218,33 +221,33 @@ def flags(acts: list[dict], weekly: list[dict], checkin: dict | None, wsum: dict
             if st and (worst is None or order[st] > order[worst]):
                 worst = st
     if runs and not knee:
-        out.append({"rule": "R-RUN-01", "level": "warn", "msg": "Löppass utan symptomrapport — anta GUL tills atleten svarat (CLAUDE.md F1)."})
+        out.append({"rule": "R-RUN-01", "level": "warn", "msg": tr(lang, "f_no_report")})
     if worst == "yellow":
-        out.append({"rule": "R-RUN-03", "level": "warn", "msg": "Primär begränsning GUL denna vecka → håll/minska, ingen ny löpprogression."})
+        out.append({"rule": "R-RUN-03", "level": "warn", "msg": tr(lang, "f_yellow")})
     if worst == "red":
-        out.append({"rule": "R-RUN-04", "level": "stop", "msg": "Primär begränsning RÖD → backa löpbelastningen, ersätt med cykel/vila."})
+        out.append({"rule": "R-RUN-04", "level": "stop", "msg": tr(lang, "f_red")})
     if any(a.get("session_type") == "run_quality" for a in runs) and worst != "green":
-        out.append({"rule": "R-RUN-06", "level": "warn", "msg": "Löpkvalitet genomförd utan bekräftad grön status för primär begränsning."})
+        out.append({"rule": "R-RUN-06", "level": "warn", "msg": tr(lang, "f_quality")})
     # recovery
     b = profile.get("recovery_baseline", {})
     neg = []
     if wsum.get("hrv_avg_3d") and b.get("hrv_ms") and wsum["hrv_avg_3d"] < b["hrv_ms"][0]:
-        neg.append(f"HRV 3d {wsum['hrv_avg_3d']} ms < baslinje {b['hrv_ms'][0]}")
+        neg.append(tr(lang, "s_hrv", v=wsum["hrv_avg_3d"], b=b["hrv_ms"][0]))
     if wsum.get("rhr_avg_3d") and b.get("rhr_bpm") and wsum["rhr_avg_3d"] >= b["rhr_bpm"][1] + 4:
-        neg.append(f"Vilopuls 3d {wsum['rhr_avg_3d']} ≥ baslinje+4")
+        neg.append(tr(lang, "s_rhr", v=wsum["rhr_avg_3d"]))
     if wsum.get("sleep_avg_3d_h") and wsum["sleep_avg_3d_h"] < 6.5:
-        neg.append(f"Sömn 3d {wsum['sleep_avg_3d_h']} h")
+        neg.append(tr(lang, "s_sleep", v=wsum["sleep_avg_3d_h"]))
     fat = ((checkin or {}).get("general") or {}).get("fatigue_1_5")
     if fat and fat >= 4:
-        neg.append(f"Subjektiv trötthet {fat}/5")
+        neg.append(tr(lang, "s_fatigue", v=fat))
     if (checkin or {}).get("general", {}).get("illness"):
-        neg.append("Sjukdom rapporterad")
+        neg.append(tr(lang, "s_ill"))
     if len(neg) >= 2:
-        out.append({"rule": "R-REC-03", "level": "warn", "msg": "Flera negativa återhämtningssignaler: " + "; ".join(neg)})
+        out.append({"rule": "R-REC-03", "level": "warn", "msg": tr(lang, "f_rec_multi", s="; ".join(neg))})
     elif neg:
-        out.append({"rule": "R-REC-01", "level": "info", "msg": "Enstaka signal (ensam ej beslutsgrund): " + neg[0]})
+        out.append({"rule": "R-REC-01", "level": "info", "msg": tr(lang, "f_rec_single", s=neg[0])})
     if len(pmc_rows) >= 42 and pmc_rows[-1]["tsb"] < -25:  # C-M4: needs history
-        out.append({"rule": "R-REC-02", "level": "info", "msg": f"TSB {pmc_rows[-1]['tsb']} — hög ackumulerad belastning."})
+        out.append({"rule": "R-REC-02", "level": "info", "msg": tr(lang, "f_tsb", tsb=pmc_rows[-1]["tsb"])})
     if not acts:
-        out.append({"rule": "R-GEN-02", "level": "warn", "msg": "Ingen träningsdata — kör sync eller lägg filer i data/inbox/."})
+        out.append({"rule": "R-GEN-02", "level": "warn", "msg": tr(lang, "f_no_data")})
     return out

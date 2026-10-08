@@ -7,12 +7,35 @@ import json
 import sys
 
 from . import analysis, context, fit_import, normalize, plans
-from .config import Paths, read_json, write_json
+from .config import Paths, profile_state, read_json, write_json
+from .i18n import lang_of
 from .weeks import next_week, parse_date, shift_week, week_of
 
 
 def _p(obj):
     print(json.dumps(obj, ensure_ascii=False, indent=2))
+
+
+GUARDED = ("checkin", "context", "new-plan")   # refuse on example/missing profile (D-017)
+WARNED = ("status", "validate", "render")
+
+
+def _profile(paths: Paths) -> dict:
+    return read_json(paths.profile) if paths.profile.exists() else {}
+
+
+def _profile_guard(paths: Paths, cmd: str, allow_example: bool) -> int | None:
+    state = profile_state(paths)
+    if state == "ok" or allow_example or cmd not in GUARDED + WARNED:
+        return None
+    msg = ("data/athlete/profile.json is missing — run 'python -m trainer init'" if state == "missing" else
+           "data/athlete/profile.json is still the invented example")
+    msg += "; onboard the athlete first (CLAUDE.md §0b, DESIGN D-017). Override: --allow-example."
+    if cmd in GUARDED:
+        print(f"ERROR: {msg}", file=sys.stderr)
+        return 3
+    print(f"WARNING: {msg}", file=sys.stderr)
+    return None
 
 
 def main(argv=None) -> int:
@@ -24,20 +47,30 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="trainer")
     ap.add_argument("--root", help="Project root (default: this repo)")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("init", help="copy *.example.* templates to real names if missing (D-015)")
-    sub.add_parser("login")
-    f = sub.add_parser("fetch"); f.add_argument("--days", type=int, default=21); f.add_argument("--refetch", action="store_true")
-    sub.add_parser("import")
-    sub.add_parser("normalize")
-    sy = sub.add_parser("sync"); sy.add_argument("--days", type=int, default=21)
-    st = sub.add_parser("status"); st.add_argument("--days", type=int, default=14)
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("--allow-example", action="store_true",
+                        help="run on the invented example profile (demo/testing only, D-017)")
+
+    def add(name, **kw):
+        return sub.add_parser(name, parents=[common], **kw)
+
+    add("init", help="copy *.example.* templates to real names if missing (D-015)")
+    add("login")
+    f = add("fetch"); f.add_argument("--days", type=int, default=21); f.add_argument("--refetch", action="store_true")
+    add("import")
+    add("normalize")
+    sy = add("sync"); sy.add_argument("--days", type=int, default=21)
+    st = add("status"); st.add_argument("--days", type=int, default=14)
     for name in ("checkin", "context", "new-plan"):
-        x = sub.add_parser(name); x.add_argument("--week", default=None)
-    v = sub.add_parser("validate"); v.add_argument("path")
-    r = sub.add_parser("render"); r.add_argument("path")
+        x = add(name); x.add_argument("--week", default=None)
+    v = add("validate"); v.add_argument("path")
+    r = add("render"); r.add_argument("path")
     a = ap.parse_args(argv)
     paths = Paths(a.root) if a.root else Paths()
     paths.ensure()
+    rc = _profile_guard(paths, a.cmd, a.allow_example)
+    if rc is not None:
+        return rc
 
     if a.cmd == "init":
         import shutil
@@ -82,30 +115,30 @@ def main(argv=None) -> int:
         out = paths.checkins / f"{week}.json"
         if out.exists():
             errs = plans.validate_checkin(read_json(out), paths)
-            print(f"{out} finns redan." + (f" Fel: {errs}" if errs else " Giltig."))
+            print(f"{out} already exists." + (f" Errors: {errs}" if errs else " Valid."))
         else:
             write_json(out, plans.checkin_template(week))
-            print(f"Skapade {out}")
+            print(f"Created {out}")
     elif a.cmd == "context":
         week = a.week or next_week()
         _, md = context.run(paths, week)
         print(md)
-        print(f"[sparat] data/context/{week}.json + .md", file=sys.stderr)
+        print(f"[saved] data/context/{week}.json + .md", file=sys.stderr)
     elif a.cmd == "new-plan":
         week = a.week or next_week()
         out = paths.plans / f"{week}.json"
         if out.exists():
             print(f"{out} already exists — revise it instead (CLAUDE.md E).", file=sys.stderr)
             return 1
-        write_json(out, plans.skeleton(week))
-        print(f"Skapade {out}")
+        write_json(out, plans.skeleton(week, lang=lang_of(_profile(paths))))
+        print(f"Created {out}")
     elif a.cmd in ("validate", "render"):
         plan = read_json(a.path)
         errs, warns = plans.validate(plan, paths, read_json(paths.profile))
         for w_ in warns:
-            print(f"VARNING: {w_}")
+            print(f"WARNING: {w_}")
         for e in errs:
-            print(f"FEL: {e}")
+            print(f"ERROR: {e}")
         if errs:
             return 1
         if a.cmd == "validate":
@@ -113,8 +146,8 @@ def main(argv=None) -> int:
         else:
             from pathlib import Path
             out = Path(a.path).with_suffix(".md")
-            out.write_text(plans.render(plan), encoding="utf-8")
-            print(f"Renderade {out}")
+            out.write_text(plans.render(plan, lang_of(_profile(paths))), encoding="utf-8")
+            print(f"Rendered {out}")
     return 0
 
 

@@ -54,6 +54,16 @@ def load_env(path: Path) -> dict[str, str]:
     return env
 
 
+EXAMPLE_MARKER = "INVENTED EXAMPLE"
+
+
+def profile_state(paths: "Paths") -> str:
+    """'missing', 'example' (still the init template) or 'ok' — guards planning commands (DESIGN D-017)."""
+    if not paths.profile.exists():
+        return "missing"
+    return "example" if str(read_json(paths.profile).get("source", "")).startswith(EXAMPLE_MARKER) else "ok"
+
+
 def read_json(path: Path):
     return json.loads(Path(path).read_text(encoding="utf-8"))
 

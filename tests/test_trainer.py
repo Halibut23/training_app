@@ -168,6 +168,75 @@ if __name__ == "__main__":
     unittest.main()
 
 
+class TestExampleGuard(unittest.TestCase):
+    """D-017: planning commands refuse to run on the invented example profile."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        self.p = make_project(self.root)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def run_cli(self, *args):
+        from trainer.__main__ import main
+        return main(["--root", str(self.root), *args])
+
+    def test_profile_state(self):
+        from trainer.config import profile_state
+        self.assertEqual(profile_state(self.p), "example")
+        prof = read_json(self.p.profile)
+        prof["source"] = "onboarding 2026-01-01"
+        write_json(self.p.profile, prof)
+        self.assertEqual(profile_state(self.p), "ok")
+        self.p.profile.unlink()
+        self.assertEqual(profile_state(self.p), "missing")
+
+    def test_guarded_commands_refuse_example(self):
+        self.assertEqual(self.run_cli("new-plan", "--week", "2026-W42"), 3)
+        self.assertFalse((self.p.plans / "2026-W42.json").exists())
+        self.assertEqual(self.run_cli("new-plan", "--week", "2026-W42", "--allow-example"), 0)
+        self.assertTrue((self.p.plans / "2026-W42.json").exists())
+
+    def test_real_profile_passes(self):
+        prof = read_json(self.p.profile)
+        prof["source"] = "onboarding 2026-01-01"
+        write_json(self.p.profile, prof)
+        self.assertEqual(self.run_cli("new-plan", "--week", "2026-W42"), 0)
+
+
+class TestLanguage(unittest.TestCase):
+    """D-018: athlete-facing output follows profile.language."""
+
+    def test_lang_of(self):
+        from trainer.i18n import lang_of
+        self.assertEqual(lang_of({}), "sv")
+        self.assertEqual(lang_of({"language": "en"}), "en")
+        self.assertEqual(lang_of({"language": "xx"}), "sv")
+
+    def test_both_languages_have_same_keys(self):
+        from trainer import i18n
+        self.assertEqual(set(i18n._T["sv"]), set(i18n._T["en"]))
+        for table in (i18n.TYPE, i18n.PRIO, i18n.STATUS, i18n.ADJ):
+            self.assertEqual(set(table["sv"]), set(table["en"]))
+
+    def test_render_english(self):
+        sk = plans.skeleton("2026-W42", today=dt.date(2026, 10, 1), lang="en")
+        md = plans.render(sk, "en")
+        self.assertIn("# Training plan 2026-W42", md)
+        self.assertIn("Monday", md)
+        self.assertIn("At least 48 h", md)
+        self.assertNotIn("Måndag", md)
+        self.assertIn("Måndag", plans.render(plans.skeleton("2026-W42", today=dt.date(2026, 10, 1)), "sv"))
+
+    def test_flags_english(self):
+        prof = read_json(ROOT / "data" / "athlete" / "profile.example.json")
+        prof["language"] = "en"
+        out = analysis.flags([], [], None, {}, [], prof, "2026-W40")
+        self.assertIn("No training data", out[-1]["msg"])
+
+
 class TestPrivacy(unittest.TestCase):
     """D-015 / CLAUDE.md A6: tracked files must not contain the athlete's personal values."""
 

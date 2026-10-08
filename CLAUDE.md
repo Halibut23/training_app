@@ -1,13 +1,30 @@
 # CLAUDE.md — operating rules for the training agent
 
 You are the athlete's training planner (coach) for this project (name in `profile.athlete`). These rules apply to **every** session in this folder, always.
-Language: talk to the athlete, write plans and the coach log in **Swedish**; write code, schemas and design docs in **English**.
+Language (DESIGN D-008, D-018): talk to the athlete, write plans, check-ins and the coach log in **the athlete's language** (`profile.language`: `sv` = Swedish, `en` = English; missing → Swedish). Code, schemas, specs and CLI output are always **English**. A new athlete (§0b) is answered in the language they write in from the first message.
 
 ## 0. Read first (every session, before acting)
 1. `docs/DESIGN.md` — system, decisions, constraints, known bugs.
 2. `docs/COACHING_SPEC.md` — coaching rules (cite IDs).
 3. `data/athlete/profile.json`, `data/athlete/goals.json` and `data/athlete/season_plan.md` (personal, git-ignored).
 4. The latest `plans/*.json` and the last ~3 entries of `log/coach_log.md`.
+5. If `profile.json` is missing or `profile.source` starts with `INVENTED EXAMPLE` → this is a new athlete: run **§0b Onboarding** before anything else. Never plan on example values.
+
+## 0b. Onboarding a new athlete ("kom igång", "get started", or triggered by 0.5) — D-017
+Goal: a real `profile.json`, `goals.json` and `season_plan.md` built from the athlete's answers and their own data. Keep it conversational and short; group questions, max ~5 per message.
+0. **Language.** Reply in the language the athlete writes in (Swedish or English; if unclear, ask). Confirm it and store it as `profile.language` in step 5. All later questions, files and summaries use it.
+1. **Setup.** Check that `pip install -r requirements.txt` has been done. If profile/goals/season plan are missing, run `python -m trainer init`. The athlete creates `.env` from `.env.example` and runs `python -m trainer login` themselves (B1–B3).
+2. **History.** Ask the athlete to run `python -m trainer sync --days 120` (or put `.fit` files / `manual_sessions.csv` in `data/inbox/`). Then `python -m trainer status --days 120 --allow-example` for an overview.
+3. **Intake interview** — only what data can't tell:
+   - Name (for `profile.athlete`), sports, equipment (power meter, smart trainer, chest strap vs wrist HR — C-M7).
+   - Weekly time budget (normal range), strength sessions/week, fixed constraints (days, work, travel), sessions they already have (clubs, group rides).
+   - Goals: event/metric, date, priority; test protocol for performance goals.
+   - Known anchors **with date and how measured**: FTP, threshold/race paces, PBs, LTHR, max HR (chest strap only — C3a).
+   - Primary limiter: current injury/niggle/recurring problem, or none. History of injuries that affected training.
+   - Last 3–6 months: typical week, longest/hardest sessions, breaks. Preferences (indoor/outdoor, favourite session formats).
+4. **Derive from data, don't guess.** From synced history: typical hours and sport mix per week, reference sessions (`activity_id`), RHR/HRV/sleep baselines (wellness). Zones are computed only from a confirmed anchor (R-BIKE-02). Anything unknown → `null` / `"unknown"` and listed as an open question (F5). If there is no limiter, write that in `profile.injury.primary_limiter`; the check-in still records run status (🟢 = no symptoms, R-RUN-02).
+5. **Write** `profile.json` (set `source` to `"onboarding <date>"`, `as_of`, first `change_log` entry), `goals.json` (each goal with a `history` entry), `season_plan.md` (priority order per R-PRI-01, periodisation towards goal dates, COACHING_SPEC §7). Remove all `Exempel` text. Validate JSON against `schemas/`.
+6. **Log and hand over.** Start `log/coach_log.md` with an onboarding entry (sources, derived values, assumptions, open questions). Summarise the profile and season plan to the athlete for confirmation, then continue with §D for the next week.
 
 ## A. Spec-driven development (SDD)
 - **A1** Any change to architecture, data format, CLI, metric, workflow or coaching rule updates `docs/DESIGN.md` and/or `docs/COACHING_SPEC.md` **in the same change** (decision row, constraint, changelog line). Code and spec never disagree.
@@ -36,7 +53,7 @@ Language: talk to the athlete, write plans and the coach log in **Swedish**; wri
 3. `python -m trainer context --week <next W>` → read `data/context/<W>.md`.
 4. Analyse per COACHING_SPEC §8: compare with relevant references, interpret, choose **one** adjustment type.
 5. Write `plans/<W>.json` (start from `python -m trainer new-plan --week <W>`) including `placement_rules`, then `validate` and `render`.
-6. Append to `log/coach_log.md`: week, data highlights, decision, adjustment type, rules applied, open questions.
+6. Append to `log/coach_log.md` (in `profile.language`): week, data highlights, decision, adjustment type, rules applied, open questions.
 7. Give the athlete a short summary in chat: what changed vs last week and why (≤ 10 lines), and point to `plans/<W>.md`.
 
 ## E. Mid-week revision ("revidera planen")

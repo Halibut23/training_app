@@ -8,7 +8,7 @@ Claude is the coach; the Python tools fetch and analyse Garmin data. The work is
 - `data/athlete/profile.json` / `goals.json` — starting point and goals
 - `plans/YYYY-Www.json|.md` — weekly plans · `log/coach_log.md` — decision log
 
-Language (DESIGN D-008): code, schemas and docs are in English; plans, the coach log and athlete-facing text are in Swedish.
+Language (DESIGN D-008, D-018): code, schemas and docs are in English. Coaching (chat, plans, coach log) is in Swedish or English, set by `language` in your profile; the agent picks it up from the language you use when you start.
 
 ## Getting started (Windows, once)
 
@@ -25,6 +25,9 @@ python -m unittest discover -s tests
 ```
 
 Login tokens are stored in `.garmin_tokens/`, so `sync` then works without a password until they expire.
+
+### First time: onboarding with the agent
+The files created by `init` contain **invented example values**. Before any planning, open Claude Code in this folder and say **"Get started"** (or **"Kom igång"** for Swedish). The agent interviews you (sports, time budget, goals, known FTP/paces/HR, injuries), reads your Garmin history and writes your own profile, goals and season plan (`CLAUDE.md` §0b). Until that is done, `checkin`, `context` and `new-plan` refuse to run on the example profile (DESIGN D-017).
 
 ## Every week
 

@@ -5,7 +5,6 @@ import datetime as dt
 import re
 
 _RX = re.compile(r"^(\d{4})-W(\d{2})$")
-DAYS_SV = ["Måndag", "Tisdag", "Onsdag", "Torsdag", "Fredag", "Lördag", "Söndag"]
 
 
 def week_of(d: dt.date) -> str:
