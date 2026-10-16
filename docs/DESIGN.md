@@ -9,7 +9,7 @@
 | Owner | see git history |
 | Status | PoC |
 | Last updated | 2026-10-08 |
-| Spec version | 0.5.0 |
+| Spec version | 0.5.1 |
 
 ---
 
@@ -190,6 +190,7 @@ Athlete-specific constraints are data, not spec (D-015): budget and strength in 
 | B-006 | Trainer rides arrive as typeKey `cycling` → classified outdoor. | Fixed: no `startLatitude` ⇒ `indoor`. | Fixed |
 | B-007 | Outdoor rides with high variability (avg power well below NP, e.g. invented: avg 170 W, NP 205 W, IF 0.90) classified `bike_sweetspot` although executed as base ride. Hilly/group rides inflate NP. | Agent overrides via check-in `session_type_override`; consider VI-based rule (N-8). | Open |
 | B-008 | Rides ≥ 150 min are always `bike_long` (0.1.2 rule), so a long outdoor ride built around structured 2 × 20 min blocks loses its threshold label. | Agent reads work intervals and name; override via check-in. Consider: ≥ 2 work intervals ≥ 15 min at ≥ 0.95 FTP → threshold even when long. | Open |
+| B-009 | Compliance borrowed activities from the previous week (7-day lookback) for any session and let fallback matches steal sessions with explicit `actual_activity_ids`. | Fixed: explicit ids first; lookback 3 days and only for key sessions with the same type; `missed` status respected. Tests added. | Fixed |
 | B-002 | Outdoor rides with auto-laps (e.g. every 5 km) can be misclassified as interval sessions. | Agent overrides `session_type` via check-in `overrides`. | Open |
 | B-003 | NP from laps (C-M5) underestimates NP for variable efforts inside laps. | Use FIT records when available. | Open |
 
@@ -212,6 +213,7 @@ Athlete-specific constraints are data, not spec (D-015): budget and strength in 
 
 | Date | Version | Change |
 |---|---|---|
+| 2026-10-08 | 0.5.1 | B-009 fixed (compliance matching passes, refines D-016). |
 | 2026-10-08 | 0.5.0 | D-018: `profile.language` (sv/en); athlete-facing strings moved to `trainer/i18n.py`; `render`/`skeleton`/`context`/flags follow the profile language; onboarding detects language (CLAUDE.md §0b). N-10 done. |
 | 2026-10-08 | 0.4.0 | D-017: onboarding procedure for new athletes (CLAUDE.md §0b) and example-profile guard (`--allow-example`); README getting-started step; remaining Swedish CLI messages translated (D-008); N-10 language setting. |
 | 2026-10-08 | 0.3.5 | D-008 enforced: README, CLI/login messages and plan-validation errors translated to English. Athlete-facing output (rendered plans, context file, coaching warnings, weekday/session labels) stays Swedish. |

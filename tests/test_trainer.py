@@ -122,11 +122,28 @@ class TestPipeline(unittest.TestCase):
         plan = plans.skeleton("2026-W40", today=dt.date(2026, 9, 28))
         plan["sessions"][0].update(sport="bike", session_type="bike_sweetspot", title="SS", priority="key", duration_min=75)
         plan["sessions"][4].update(sport="bike", session_type="bike_threshold", title="2x20", priority="key", duration_min=105)
-        rows = {r.get("planned"): r for r in analysis.compliance(plan, self.acts)}
+        rows = {r.get("planned"): r for r in analysis.compliance(plan, self.acts, lookback_days=7)}
         self.assertEqual(rows["2x20"]["status"], "done")          # done 22/9, i.e. moved into the previous week
         self.assertTrue(rows["2x20"]["moved"])
         self.assertEqual(rows["SS"]["actual_type"], "bike_sweetspot")
         self.assertNotIn("missed_or_not_synced", {rows["2x20"]["status"], rows["SS"]["status"]})
+
+    def test_compliance_no_borrowing_for_supporting(self):
+        """B-009: a supporting session must not be credited with last week's activity."""
+        plan = plans.skeleton("2026-W40", today=dt.date(2026, 9, 28))
+        plan["sessions"][2].update(sport="strength", session_type="strength", title="Str", priority="supporting", duration_min=35)
+        rows = {r.get("planned"): r for r in analysis.compliance(plan, self.acts)}
+        self.assertEqual(rows["Str"]["status"], "missed_or_not_synced")  # only strength is 24/9 (W39)
+
+    def test_compliance_explicit_ids_win(self):
+        plan = plans.skeleton("2026-W40", today=dt.date(2026, 9, 28))
+        vo2 = self.by_name("3x12 SS")
+        plan["sessions"][0].update(sport="bike", session_type="bike_long", title="Long", priority="key", duration_min=90)
+        plan["sessions"][3].update(sport="bike", session_type="bike_sweetspot", title="SS", priority="key", duration_min=75,
+                                   actual_activity_ids=[vo2["id"]], status="done")
+        rows = {r.get("planned"): r for r in analysis.compliance(plan, self.acts)}
+        self.assertEqual(rows["SS"]["actual_id"], vo2["id"])
+        self.assertNotEqual(rows["Long"].get("actual_id"), vo2["id"])
 
     def test_stacked_hard_flag(self):
         # W39: 2x20 on 22/9 and run on 23/9 not hard → no flag; add hard ride 23/9

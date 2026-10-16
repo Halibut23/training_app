@@ -105,57 +105,65 @@ def compare(a: dict, ref: dict) -> dict:
 
 
 # ---------- compliance (R-GEN-03) ----------
-def compliance(plan: dict | None, acts: list[dict], lookback_days: int = 7) -> list[dict]:
-    """Planned vs done, order-independent (R-GEN-11).
+def compliance(plan: dict | None, acts: list[dict], lookback_days: int = 3) -> list[dict]:
+    """Planned vs done, order-independent (R-GEN-11, D-016).
 
-    A planned session is matched by purpose, not by date: first an explicit `actual_activity_ids`,
-    then any unused activity in [week start − lookback, week end] with the same session_type,
-    then the same sport (nearest date). Moved sessions are reported as moved, never as missed.
+    Pass 1: explicit `actual_activity_ids` (and sessions marked `missed`).
+    Pass 2: same session_type inside the week; key sessions may also match up to
+            `lookback_days` before the week (moved earlier, e.g. before a trip).
+    Pass 3: same sport inside the week (nearest date).
+    Activities from earlier weeks are never borrowed for supporting/optional sessions (B-009).
     """
     if not plan:
         return []
     s, e = parse_date(plan["start_date"]), parse_date(plan["end_date"])
-    pool = [a for a in acts if s - dt.timedelta(days=lookback_days) <= parse_date(a["date"]) <= e]
     by_id = {a["id"]: a for a in acts}
-    used, out = set(), []
+    in_week = [a for a in acts if s <= parse_date(a["date"]) <= e]
+    early = [a for a in acts if s - dt.timedelta(days=lookback_days) <= parse_date(a["date"]) < s]
     real = [ps for ps in plan["sessions"] if ps["sport"] != "rest"]
-    # key sessions first so they claim their best match
-    order = {"key": 0, "supporting": 1, "optional": 2}
-    for ps in sorted(real, key=lambda x: order.get(x["priority"], 3)):
-        pd = parse_date(ps["date"])
-        match = None
+    used, match = set(), {}
+    for ps in real:  # pass 1
         for aid in ps.get("actual_activity_ids", []):
             if aid in by_id and aid not in used:
-                match = by_id[aid]
+                match[ps["id"]] = by_id[aid]
+                used.add(aid)
                 break
-        if match is None:
-            for same_type in (True, False):
-                cands = [a for a in pool if a["id"] not in used and a["sport"] == ps["sport"]
-                         and (not same_type or a.get("session_type") == ps["session_type"])
-                         and (same_type or s <= parse_date(a["date"]) <= e)]
-                cands.sort(key=lambda a: abs((parse_date(a["date"]) - pd).days))
-                if cands:
-                    match = cands[0]
-                    break
+    order = {"key": 0, "supporting": 1, "optional": 2}
+    todo = [ps for ps in sorted(real, key=lambda x: order.get(x["priority"], 3))
+            if ps["id"] not in match and ps.get("status") != "missed"]
+    for same_type in (True, False):  # pass 2 and 3
+        for ps in todo:
+            if ps["id"] in match:
+                continue
+            pool = in_week + (early if same_type and ps["priority"] == "key" else [])
+            pd = parse_date(ps["date"])
+            cands = [a for a in pool if a["id"] not in used and a["sport"] == ps["sport"]
+                     and (not same_type or a.get("session_type") == ps["session_type"])]
+            cands.sort(key=lambda a: abs((parse_date(a["date"]) - pd).days))
+            if cands:
+                match[ps["id"]] = cands[0]
+                used.add(cands[0]["id"])
+    out = []
+    for ps in real:
         row = {"planned_id": ps["id"], "date": ps["date"], "planned": ps["title"],
                "planned_type": ps["session_type"], "planned_min": ps["duration_min"],
                "planned_tss": ps.get("est_tss")}
-        if not match:
-            row["status"] = "missed_or_not_synced"
+        m = match.get(ps["id"])
+        if not m:
+            row["status"] = "missed" if ps.get("status") == "missed" else "missed_or_not_synced"
         else:
-            used.add(match["id"])
-            amin = round((match.get("duration_s") or 0) / 60)
-            row.update({"actual_id": match["id"], "actual_date": match["date"], "actual_type": match.get("session_type"),
-                        "actual_min": amin, "actual_tss": match.get("tss")})
+            amin = round((m.get("duration_s") or 0) / 60)
+            row.update({"actual_id": m["id"], "actual_date": m["date"], "actual_type": m.get("session_type"),
+                        "actual_min": amin, "actual_tss": m.get("tss")})
             off = ps["duration_min"] and abs(amin - ps["duration_min"]) / ps["duration_min"] > 0.25
-            row["status"] = "modified" if (match.get("session_type") != ps["session_type"] or off) else "done"
-            if match["date"] != ps["date"]:
+            row["status"] = "modified" if (m.get("session_type") != ps["session_type"] or off) else "done"
+            if m["date"] != ps["date"]:
                 row["moved"] = True
         out.append(row)
     out.sort(key=lambda r: r["date"])
     planned_ids = {r.get("actual_id") for r in out}
-    for a in pool:
-        if s <= parse_date(a["date"]) <= e and a["id"] not in planned_ids:
+    for a in in_week:
+        if a["id"] not in planned_ids:
             out.append({"date": a["date"], "status": "unplanned", "actual_id": a["id"],
                         "actual_type": a.get("session_type"), "actual_min": round((a.get("duration_s") or 0) / 60),
                         "actual_tss": a.get("tss")})
