@@ -8,8 +8,8 @@
 |---|---|
 | Owner | see git history |
 | Status | PoC |
-| Last updated | 2026-10-08 |
-| Spec version | 0.5.0 |
+| Last updated | 2026-10-16 |
+| Spec version | 0.6.0 |
 
 ---
 
@@ -29,7 +29,7 @@ initial condition ─► goals ─► weekly plan ─► training (Garmin) ─�
 
 ## 2. Architecture
 
-The "agent" is Claude (Cowork / Claude Code) operating in this folder, steered by `CLAUDE.md`. Python provides deterministic tools; Claude provides judgement.
+The "agent" is Claude (Cowork / Claude Code) operating in this folder, steered by `CLAUDE.md` (rules) and `.claude/skills/` (procedures). Python provides deterministic tools; Claude provides judgement.
 
 ```
 Garmin Connect ──(garminconnect lib)──► data/raw/garmin/…   (immutable raw JSON)
@@ -56,6 +56,8 @@ FIT / CSV files ──(data/inbox)────────► data/raw/fit/…, 
 | `CLAUDE.md` | Agent operating rules (always followed) | Human + agent (with log) | ✅ tracked |
 | `docs/DESIGN.md` | This document | Agent + human | ✅ tracked |
 | `docs/COACHING_SPEC.md` | Normative, generic coaching rules with IDs | Agent + human | ✅ tracked |
+| `.claude/skills/<name>/SKILL.md` | Procedures read on demand: `onboarding`, `weekly-loop`, `revise-plan` (D-020) | Agent + human | ✅ tracked |
+| `.claude/settings.json` | Read-deny list for secrets, raw data, tool caches (D-021); `settings.local.json` is personal | Human | ✅ tracked (`settings.json`) |
 | `docs/reference/` | Original personal hand-off (read-only source) | Nobody | 🚫 ignored |
 | `data/athlete/*.example.*` | Invented example profile/goals/season plan (templates + test fixtures) | Agent + human | ✅ tracked |
 | `data/athlete/profile.json` | Initial condition: history, zones, references, constraints | Agent (logged) | 🚫 ignored |
@@ -67,7 +69,8 @@ FIT / CSV files ──(data/inbox)────────► data/raw/fit/…, 
 | `data/checkins/` | Subjective weekly check-ins (RPE, limiter status, sleep, notes) | Agent from conversation | 🚫 ignored |
 | `data/context/` | Analysis bundles fed to the agent | Tools only | 🚫 ignored |
 | `plans/` | `YYYY-Www.json` (source of truth) + `.md` (rendered) | Agent | 🚫 ignored |
-| `log/coach_log.md` | Chronological decisions, in Swedish | Agent | 🚫 ignored |
+| `log/coach_log.md` | Decisions, newest first, in the athlete's language (D-021) | Agent | 🚫 ignored |
+| `log/archive/YYYY-MM.md` | Entries older than 60 days, moved by `log-archive` | Tool | 🚫 ignored (`log/*`) |
 | `schemas/` | JSON Schemas for plan, check-in, goals | Agent + human | ✅ tracked |
 | `trainer/`, `tests/` | Python package (stdlib + optional libs) and tests | Agent + human | ✅ tracked |
 | `.env`, `.garmin_tokens/`, `.venv*/` | Secrets, tokens, local environment | Human / tools | 🚫 ignored |
@@ -78,7 +81,7 @@ Empty ignored folders keep a tracked `.gitkeep` so a fresh clone has the full st
 - **Rule:** everything that describes *the system* (code, schemas, tests, SDD specs, example files) is versioned; everything that describes *the athlete* (health, training data, plans, logs, goals, dates of personal events, credentials) is git-ignored.
 - Tracked specs refer to athlete values by key (`profile.run.easy_hr_cap_bpm`) and use invented values in examples (CLAUDE.md A6).
 - A fresh clone works with `python -m trainer init`, which copies `*.example.*` to the real file names if they are missing; tests run against the example files only.
-- The copied profile still carries `source: "INVENTED EXAMPLE …"`. Until onboarding (CLAUDE.md §0b, D-017) replaces it, the planning commands refuse to run (D-017).
+- The copied profile still carries `source: "INVENTED EXAMPLE …"`. Until onboarding (skill `onboarding`, D-017/D-020) replaces it, the planning commands refuse to run (D-017).
 - Before a commit: `git status` must show no files under `data/` (except `*.example.*`, `.gitkeep`), `plans/`, `log/`, `docs/reference/`.
 
 ### 2.2 CLI
@@ -91,12 +94,14 @@ python -m trainer fetch [--days 21]     # Garmin → data/raw (activities, laps,
 python -m trainer import                # data/inbox → data/raw (FIT) / manual CSV
 python -m trainer normalize             # raw → data/derived (idempotent rebuild)
 python -m trainer status                # last 14 days + load summary (quick look)
+python -m trainer brief [--week W]      # session-start brief (≤ 4,000 chars): state, anchors, goals, current plan, recovery, check-in, latest 3 log entries, open questions. Prints only, writes no files (D-019)
 python -m trainer checkin --week W      # creates check-in template
 python -m trainer context --week W      # analysis bundle for planning week W
 python -m trainer new-plan --week W     # plan skeleton
 python -m trainer validate plans/W.json
 python -m trainer render plans/W.json   # → plans/W.md
 python -m trainer sync                  # fetch + import + normalize
+python -m trainer log-archive [--days 60]  # move coach-log entries older than N days to log/archive/YYYY-MM.md (idempotent, D-021)
 ```
 
 ## 3. Design decisions (ADR log)
@@ -123,6 +128,9 @@ Add new decisions at the bottom. Never delete; mark superseded ones.
 | D-016 | 2026-10-03 | Plans are order-independent menus: `placement_rules` (plan) and `completed_date` (session, may precede the week) in the schema; compliance matches planned↔done by session type over week start − 7 d … week end, never by exact date. | Athlete reorders sessions by purpose/intensity (R-GEN-11/12). | Active |
 | D-017 | 2026-10-08 | New athletes are onboarded before any planning: CLAUDE.md §0b (setup → history sync → intake interview → derive from data → write profile/goals/season plan → log). Example-profile guard: while `profile.json` is missing or `profile.source` starts with `INVENTED EXAMPLE`, `checkin`, `context` and `new-plan` exit with code 3; `status`, `validate`, `render` only warn. Override with `--allow-example`. | Shared repo (D-015): a friend's fresh clone must not be coached on invented numbers (CLAUDE.md F5). The marker already exists in the example file, so no new data field is needed. | Active |
 | D-018 | 2026-10-08 | Athlete language is `profile.language` (`sv` \| `en`, default `sv`). Chat, interview, check-in, plans, coach log and generated athlete-facing text (rendered plans, context file, rule-flag messages) use it; all strings live in `trainer/i18n.py`. Code, schemas, specs, CLI and validation messages stay English (D-008). During onboarding the agent answers in the language the athlete writes in and stores it. | The repo is shared; non-Swedish friends must get English questions from the first message. One string table keeps both languages in sync. | Active |
+| D-019 | 2026-10-16 | Tiered context reading. A session starts by reading `CLAUDE.md` + the output of `python -m trainer brief` only; further files are read per task tier (tier table in `CLAUDE.md` §0). `data/context/W.md` is the single analysis input for planning; the agent does not re-read profile/goals/plan JSON for facts it contains. | The old §0 read ~74k chars before every session, even for a one-line message; the same facts were read from several places and a context file could be stale. | Active |
+| D-020 | 2026-10-16 | Procedures as on-demand files. Onboarding, the weekly loop and mid-week revision move from `CLAUDE.md` to `.claude/skills/<name>/SKILL.md` (`onboarding`, `weekly-loop`, `revise-plan`). `CLAUDE.md` keeps the rules (IDs unchanged) and an index with explicit paths, so it also works in clients that don't auto-load skills. Refines D-017 (onboarding location). | Rules must always be loaded; procedures only when the task needs them. | Active |
+| D-021 | 2026-10-16 | Coach-log contract and read guards. `log/coach_log.md` is newest-first by heading date (`## YYYY-MM-DD — …`); `brief` sorts entries by that date and never trusts file order. Entries older than 60 days move to `log/archive/YYYY-MM.md` via `trainer log-archive`. `.claude/settings.json` denies reads of secrets, raw data and tool caches (defence in depth for B1/C1; the text rules stay because not every client honours it). | Unbounded log growth and out-of-order entries forced whole-file reads; some files are easy to read by mistake (39 MB of raw wellness JSON). | Active |
 
 ## 4. Constraints
 
@@ -190,6 +198,7 @@ Athlete-specific constraints are data, not spec (D-015): budget and strength in 
 | B-006 | Trainer rides arrive as typeKey `cycling` → classified outdoor. | Fixed: no `startLatitude` ⇒ `indoor`. | Fixed |
 | B-007 | Outdoor rides with high variability (avg power well below NP, e.g. invented: avg 170 W, NP 205 W, IF 0.90) classified `bike_sweetspot` although executed as base ride. Hilly/group rides inflate NP. | Agent overrides via check-in `session_type_override`; consider VI-based rule (N-8). | Open |
 | B-008 | Rides ≥ 150 min are always `bike_long` (0.1.2 rule), so a long outdoor ride built around structured 2 × 20 min blocks loses its threshold label. | Agent reads work intervals and name; override via check-in. Consider: ≥ 2 work intervals ≥ 15 min at ≥ 0.95 FTP → threshold even when long. | Open |
+| B-009 | Compliance borrowed activities from the previous week (7-day lookback) for any session and let fallback matches steal sessions with explicit `actual_activity_ids`. | Fixed: explicit ids first; lookback 3 days and only for key sessions with the same type; `missed` status respected. Tests added. | Fixed |
 | B-002 | Outdoor rides with auto-laps (e.g. every 5 km) can be misclassified as interval sessions. | Agent overrides `session_type` via check-in `overrides`. | Open |
 | B-003 | NP from laps (C-M5) underestimates NP for variable efforts inside laps. | Use FIT records when available. | Open |
 
@@ -212,6 +221,8 @@ Athlete-specific constraints are data, not spec (D-015): budget and strength in 
 
 | Date | Version | Change |
 |---|---|---|
+| 2026-10-16 | 0.6.0 | D-019/D-020/D-021: tiered context reading; `trainer brief`; `trainer log-archive` and coach-log contract; procedures moved to `.claude/skills/`; `CLAUDE.md` ≤ 5,000 chars; `.claude/settings.json` read guards; context file shows only relevant reference deltas. Session start ≈ 8,600 chars (was 74,113); weekly loop ≈ 20,700 chars (was ≈ 90,800). |
+| 2026-10-08 | 0.5.1 | B-009 fixed (compliance matching passes, refines D-016). |
 | 2026-10-08 | 0.5.0 | D-018: `profile.language` (sv/en); athlete-facing strings moved to `trainer/i18n.py`; `render`/`skeleton`/`context`/flags follow the profile language; onboarding detects language (CLAUDE.md §0b). N-10 done. |
 | 2026-10-08 | 0.4.0 | D-017: onboarding procedure for new athletes (CLAUDE.md §0b) and example-profile guard (`--allow-example`); README getting-started step; remaining Swedish CLI messages translated (D-008); N-10 language setting. |
 | 2026-10-08 | 0.3.5 | D-008 enforced: README, CLI/login messages and plan-validation errors translated to English. Athlete-facing output (rendered plans, context file, coaching warnings, weekday/session labels) stays Swedish. |

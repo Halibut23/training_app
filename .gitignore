@@ -10,6 +10,9 @@ __pycache__/
 .mypy_cache/
 *.pyc
 
+# Personal Claude Code settings (the shared .claude/settings.json is tracked)
+.claude/settings.local.json
+
 # Personal hand-off (source document)
 docs/reference/
 /traningsplan_handoff.md

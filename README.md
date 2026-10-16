@@ -2,7 +2,7 @@
 
 Claude is the coach; the Python tools fetch and analyse Garmin data. The work is spec-driven:
 
-- `CLAUDE.md` — rules the agent always follows
+- `CLAUDE.md` — rules the agent always follows; `.claude/skills/` — procedures it reads on demand (onboarding, weekly loop, plan revision)
 - `docs/DESIGN.md` — design decisions, constraints, known bugs, nice-to-haves (living)
 - `docs/COACHING_SPEC.md` — coaching rules with IDs (living)
 - `data/athlete/profile.json` / `goals.json` — starting point and goals
@@ -27,7 +27,7 @@ python -m unittest discover -s tests
 Login tokens are stored in `.garmin_tokens/`, so `sync` then works without a password until they expire.
 
 ### First time: onboarding with the agent
-The files created by `init` contain **invented example values**. Before any planning, open Claude Code in this folder and say **"Get started"** (or **"Kom igång"** for Swedish). The agent interviews you (sports, time budget, goals, known FTP/paces/HR, injuries), reads your Garmin history and writes your own profile, goals and season plan (`CLAUDE.md` §0b). Until that is done, `checkin`, `context` and `new-plan` refuse to run on the example profile (DESIGN D-017).
+The files created by `init` contain **invented example values**. Before any planning, open Claude Code in this folder and say **"Get started"** (or **"Kom igång"** for Swedish). The agent interviews you (sports, time budget, goals, known FTP/paces/HR, injuries), reads your Garmin history and writes your own profile, goals and season plan (skill `onboarding`, `.claude/skills/onboarding/SKILL.md`). Until that is done, `checkin`, `context` and `new-plan` refuse to run on the example profile (DESIGN D-017).
 
 ## Every week
 
@@ -43,5 +43,5 @@ Other requests:
 `login · fetch · import · normalize · sync · status · checkin · context · new-plan · validate · render` — see `docs/DESIGN.md` §2.2.
 
 ## Git and personal data
-The code, schemas, tests and SDD specs (`CLAUDE.md`, `docs/*.md`) are version-controlled. All personal data (profile, goals, season plan, check-ins, plans, coach log, Garmin data, hand-off, `.env`, tokens) is git-ignored; see `.gitignore` and `docs/DESIGN.md` D-015.
+The code, schemas, tests and SDD specs (`CLAUDE.md`, `.claude/`, `docs/*.md`) are version-controlled. All personal data (profile, goals, season plan, check-ins, plans, coach log, Garmin data, hand-off, `.env`, tokens) is git-ignored; see `.gitignore` and `docs/DESIGN.md` D-015.
 The specs refer to personal values by key (e.g. `profile.run.easy_hr_cap_bpm`). The `TestPrivacy` test flags names, PB times or goal titles that end up in a tracked file.
