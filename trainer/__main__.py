@@ -6,7 +6,7 @@ import datetime as dt
 import json
 import sys
 
-from . import analysis, context, fit_import, normalize, plans
+from . import analysis, brief, coachlog, context, fit_import, normalize, plans
 from .config import Paths, profile_state, read_json, write_json
 from .i18n import lang_of
 from .weeks import next_week, parse_date, shift_week, week_of
@@ -30,7 +30,7 @@ def _profile_guard(paths: Paths, cmd: str, allow_example: bool) -> int | None:
         return None
     msg = ("data/athlete/profile.json is missing — run 'python -m trainer init'" if state == "missing" else
            "data/athlete/profile.json is still the invented example")
-    msg += "; onboard the athlete first (CLAUDE.md §0b, DESIGN D-017). Override: --allow-example."
+    msg += "; onboard the athlete first (skill `onboarding`, DESIGN D-017/D-020). Override: --allow-example."
     if cmd in GUARDED:
         print(f"ERROR: {msg}", file=sys.stderr)
         return 3
@@ -61,13 +61,16 @@ def main(argv=None) -> int:
     add("normalize")
     sy = add("sync"); sy.add_argument("--days", type=int, default=21)
     st = add("status"); st.add_argument("--days", type=int, default=14)
-    for name in ("checkin", "context", "new-plan"):
+    for name in ("checkin", "context", "new-plan", "brief"):
         x = add(name); x.add_argument("--week", default=None)
+    la = add("log-archive", help="move coach-log entries older than N days to log/archive/ (D-021)")
+    la.add_argument("--days", type=int, default=60)
     v = add("validate"); v.add_argument("path")
     r = add("render"); r.add_argument("path")
     a = ap.parse_args(argv)
     paths = Paths(a.root) if a.root else Paths()
-    paths.ensure()
+    if a.cmd != "brief":  # brief writes nothing, not even empty folders (D-019)
+        paths.ensure()
     rc = _profile_guard(paths, a.cmd, a.allow_example)
     if rc is not None:
         return rc
@@ -110,6 +113,10 @@ def main(argv=None) -> int:
                       + " ".join(f"{k}={c[k]}" for k in ("km", "np", "if", "tss", "avg_hr", "pace") if k in c))
         w = week_of(dt.date.today())
         _p(analysis.weekly_summary(acts, [shift_week(w, -i) for i in range(3, -1, -1)]))
+    elif a.cmd == "brief":
+        print(brief.build(paths, a.week))
+    elif a.cmd == "log-archive":
+        _p(coachlog.archive(paths.log, days=a.days))
     elif a.cmd == "checkin":
         week = a.week or week_of(dt.date.today())
         out = paths.checkins / f"{week}.json"
@@ -128,7 +135,7 @@ def main(argv=None) -> int:
         week = a.week or next_week()
         out = paths.plans / f"{week}.json"
         if out.exists():
-            print(f"{out} already exists — revise it instead (CLAUDE.md E).", file=sys.stderr)
+            print(f"{out} already exists — revise it instead (skill `revise-plan`).", file=sys.stderr)
             return 1
         write_json(out, plans.skeleton(week, lang=lang_of(_profile(paths))))
         print(f"Created {out}")

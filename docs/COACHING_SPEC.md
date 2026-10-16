@@ -78,11 +78,11 @@
 
 ## 7. Periodisation
 
-Personal and date-bound → `data/athlete/season_plan.md` (git-ignored). The agent reads it in step 0 of `CLAUDE.md` and updates it (with a coach-log note) when goals or dates change.
+Personal and date-bound → `data/athlete/season_plan.md` (git-ignored). The agent sees it via `trainer brief` / the context file (read the file itself only when periodisation matters) and updates it (with a coach-log note) when goals or dates change.
 
 ## 8. Weekly review procedure (the loop)
 
-1. Read the previous plan (latest revision).
+1. Read the previous plan (latest revision) via the context file; open `plans/W.json` only when revising.
 2. Collect actual data (sync) + check-in: power, NP, IF, TSS, HR, RPE, interval consistency, time, run km/pace, **limiter status**, next-day response, strength, sleep/recovery.
 3. Compare with closest relevant history (R-GEN-10).
 4. Interpret: load reasonable? capacity improved? harder/easier than expected? accumulated fatigue? limiter reaction? clear reason to change?

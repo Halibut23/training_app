@@ -1,9 +1,9 @@
-"""Builds the analysis bundle the agent reads before planning week W (CLAUDE.md D3)."""
+"""Builds the analysis bundle the agent reads before planning week W (skill `weekly-loop`, DESIGN D-019)."""
 from __future__ import annotations
 
 import datetime as dt
 
-from .i18n import lang_of, tr
+from .i18n import TYPE, lang_of, tr
 from . import analysis
 from .config import Paths, read_json, write_json
 from .normalize import load
@@ -98,7 +98,7 @@ def to_markdown(ctx: dict) -> str:
         return tr(lang, key, **kw)
 
     L = [f"# {T('ctx_title')} {ctx['plan_week']} ({ctx['plan_dates'][0]} – {ctx['plan_dates'][1]})",
-         T("generated", ts=ctx["generated"], week=ctx["review_week"]), ""]
+         T("generated", ts=ctx["generated"], week=ctx["review_week"]), f"_{T('ctx_note')}_", ""]
     L += [f"## {T('flags')}"]
     L += [f"- **{f['level'].upper()}** `{f['rule']}` {f['msg']}" for f in ctx["flags"]] or [f"- {T('none')}"]
     L += ["", f"## {T('goals')}"]
@@ -127,11 +127,15 @@ def to_markdown(ctx: dict) -> str:
     L += ["", f"## {T('recent_sessions')}"]
     for s in ctx["sessions"]:
         a = s["session"]
-        L.append(f"- **{a.get('date')} {a.get('type')}** “{a.get('name') or ''}” — "
-                 + ", ".join(f"{k} {_fmt(a[k], k)}" for k in ("min", "km", "np", "if", "tss", "avg_hr", "pace", "work_w", "work_hr", "work_fade_pct", "decoupling_pct", "rpe") if k in a))
+        name = a.get("name") or ""
+        label = f" “{name}”" if name and name != TYPE[lang].get(a.get("type")) else ""
+        indoor_bike = str(a.get("type", "")).startswith("bike") and a.get("env") == "indoor"
+        keys = [k for k in ("min", "km", "np", "if", "tss", "avg_hr", "pace", "work_w", "work_hr", "work_fade_pct", "decoupling_pct", "rpe")
+                if k in a and not (k == "km" and indoor_bike)]
+        L.append(f"- **{a.get('date')} {a.get('type')}**{label} — " + ", ".join(f"{k} {_fmt(a[k], k)}" for k in keys))
         if s.get("reference"):
             r = s["reference"]
-            L.append(f"  - ref {r.get('date') or r.get('id')}: " + ", ".join(f"Δ{k} {v:+g}" for k, v in s["delta"].items())
+            L.append(f"  - ref {r.get('date') or r.get('id')}: " + ", ".join(f"Δ{k} {v:+g}" for k, v in analysis.relevant_deltas(a.get("type"), s["delta"]).items())
                      + (f" — {r['summary']}" if r.get("summary") else ""))
     ci = ctx["checkin"]
     L += ["", "## Check-in", "```json", __import__("json").dumps(ci, ensure_ascii=False, indent=1) if ci else T("missing"), "```"]

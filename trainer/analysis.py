@@ -11,6 +11,19 @@ from .weeks import parse_date, week_bounds, week_of
 HARD_TYPES = {"bike_threshold", "bike_vo2", "bike_test", "bike_sweetspot", "run_quality"}
 KEY_TYPES = HARD_TYPES | {"bike_long", "run_long"}
 
+# Deltas worth printing per session-type prefix (D-019). `compare()` still computes all of them (D-007).
+RELEVANT_DELTAS = {
+    "bike": ("np", "if", "tss", "work_w", "work_hr", "w_per_bpm", "decoupling_pct", "min"),
+    "run": ("pace", "avg_hr", "km", "min", "tss"),
+    "strength": ("min", "avg_hr"),
+    "other": ("min", "tss"),
+}
+
+
+def relevant_deltas(session_type: str | None, delta: dict) -> dict:
+    keys = RELEVANT_DELTAS.get((session_type or "other").split("_")[0], RELEVANT_DELTAS["other"])
+    return {k: v for k, v in delta.items() if k in keys}
+
 
 def is_hard(a: dict) -> bool:
     return a.get("session_type") in HARD_TYPES or (a.get("tss") or 0) > 120
@@ -75,6 +88,7 @@ def compact(a: dict) -> dict:
         eff = round(a["avg_power"] / a["avg_hr"], 2)
     return {k: v for k, v in {
         "id": a.get("id"), "date": a.get("date"), "type": a.get("session_type"), "name": a.get("name"),
+        "env": a.get("environment"),
         "min": round((a.get("duration_s") or 0) / 60) or None, "km": a.get("distance_km"),
         "avg_w": a.get("avg_power"), "np": a.get("np"), "if": a.get("if"), "tss": a.get("tss"),
         "avg_hr": a.get("avg_hr"), "max_hr": a.get("max_hr"), "pace": a.get("pace_min_km"),

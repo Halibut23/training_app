@@ -257,7 +257,8 @@ class TestLanguage(unittest.TestCase):
 class TestPrivacy(unittest.TestCase):
     """D-015 / CLAUDE.md A6: tracked files must not contain the athlete's personal values."""
 
-    TRACKED = ["CLAUDE.md", "README.md", "docs/*.md", "schemas/*.json", "trainer/*.py", "tests/*.py", "data/**/*.example.*"]
+    TRACKED = ["CLAUDE.md", "README.md", "docs/*.md", "schemas/*.json", "trainer/*.py", "tests/*.py", "data/**/*.example.*",
+               ".claude/**/*.md", ".claude/*.json"]
 
     def test_no_personal_values_in_tracked_files(self):
         prof_path = ROOT / "data" / "athlete" / "profile.json"
@@ -282,5 +283,189 @@ class TestPrivacy(unittest.TestCase):
 
     def test_gitignore_covers_personal_paths(self):
         gi = (ROOT / ".gitignore").read_text(encoding="utf-8")
-        for entry in (".env", ".garmin_tokens/", "docs/reference/", "data/**", "plans/*", "log/*"):
+        for entry in (".env", ".garmin_tokens/", "docs/reference/", "data/**", "plans/*", "log/*", ".claude/settings.local.json"):
             self.assertIn(entry, gi)
+
+
+def _log(*entries, header="# Coach log\n\nNewest first.\n\n---\n\n"):
+    return header + "".join(f"## {d} — {t}\n- {body}\n\n" for d, t, body in entries)
+
+
+class TestBrief(unittest.TestCase):
+    """D-019: `trainer brief` is the session-start read — short, fresh, never refuses."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        self.p = make_project(self.root)
+        normalize.run(self.p)
+        self.set_profile(language="sv")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def set_profile(self, **kw):
+        prof = read_json(self.p.profile)
+        prof["source"] = "onboarding 2026-01-01"
+        prof.update(kw)
+        write_json(self.p.profile, prof)
+
+    def brief(self, week="2026-W41"):
+        from trainer import brief
+        return brief.build(self.p, week, today=dt.date(2026, 10, 1))
+
+    def test_brief_sections_and_size(self):
+        from trainer.i18n import tr
+        sk = plans.skeleton("2026-W41", today=dt.date(2026, 9, 28))
+        write_json(self.p.plans / "2026-W41.json", sk)
+        long_body = "x" * 3000
+        self.p.log.write_text(_log(("2026-10-01", "A", long_body), ("2026-09-30", "B", long_body),
+                                   ("2026-09-29", "C", long_body), ("2026-09-28", "D", long_body)), encoding="utf-8")
+        for lang in ("sv", "en"):
+            self.set_profile(language=lang)
+            out = self.brief()
+            for key in ("b_h_state", "b_h_anchors", "b_h_goals", "b_h_plan", "b_h_recovery",
+                        "b_h_checkin", "b_h_log", "b_h_oq", "b_h_next"):
+                self.assertIn(f"## {tr(lang, key)}", out, (lang, key))
+            self.assertLessEqual(len(out), 4000, lang)
+            self.assertNotIn("x" * 700, out)  # log entries are truncated
+
+    def test_brief_example_profile_banner(self):
+        import contextlib
+        import io
+        from trainer.__main__ import main
+        prof = read_json(self.p.profile)
+        prof["source"] = "INVENTED EXAMPLE template"
+        write_json(self.p.profile, prof)
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = main(["--root", str(self.root), "brief", "--week", "2026-W41"])
+        self.assertEqual(rc, 0)
+        self.assertIn("onboarding", buf.getvalue().splitlines()[0])
+
+    def test_brief_writes_no_files(self):
+        before = sorted(str(f) for f in self.root.rglob("*"))
+        self.brief()
+        self.assertEqual(before, sorted(str(f) for f in self.root.rglob("*")))
+
+    def test_brief_log_sorted_by_date(self):
+        self.p.log.write_text(_log(("2026-10-05", "mid-old", "m1"), ("2026-10-12", "newest", "n1"),
+                                   ("2026-10-01", "third", "t1"), ("2026-09-20", "fourth", "f1"),
+                                   ("2026-01-01", "ancient", "a1")), encoding="utf-8")
+        out = self.brief()
+        order = [out.index(t) for t in ("newest", "mid-old", "third")]
+        self.assertEqual(order, sorted(order))
+        self.assertNotIn("fourth", out)
+        self.assertNotIn("ancient", out)
+
+    def test_brief_missing_files(self):
+        from trainer import brief
+        with tempfile.TemporaryDirectory() as t:
+            out = brief.build(Paths(t), "2026-W41", today=dt.date(2026, 10, 1))
+        self.assertIn("onboarding", out.splitlines()[0])
+        self.assertIn("–", out)
+
+
+class TestContextTrim(unittest.TestCase):
+    """D-019: the context file prints only the deltas that matter per session type."""
+
+    SESSIONS_BEFORE = 1375  # fixture W.md sessions section before 0.6.0 (chars); the whole file also gains a note line
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.p = make_project(Path(self.tmp.name))
+        normalize.run(self.p)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_context_md_relevant_deltas(self):
+        _, md = context.run(self.p, "2026-W41", today=dt.date(2026, 10, 1))
+        lines = md.splitlines()
+        pairs = [(a, b) for a, b in zip(lines, lines[1:]) if a.startswith("- **") and b.strip().startswith("- ref")]
+        self.assertTrue(pairs)
+        for line, ref in pairs:
+            if " bike_" in line:
+                self.assertNotIn("Δpace", ref)
+                self.assertNotIn("Δavg_hr", ref)
+            if " run_" in line:
+                self.assertNotIn("Δnp", ref)
+
+    def test_compare_keeps_all_deltas(self):
+        acts = read_jsonl(self.p.activities)
+        runs = [a for a in acts if a["sport"] == "run"]
+        d = analysis.compare(runs[-1], runs[-2])["delta"]
+        self.assertIn("pace", d)
+        self.assertEqual(set(analysis.relevant_deltas("bike_vo2", {"pace": 1, "np": 2})), {"np"})
+
+    def test_context_md_size_drops(self):
+        _, md = context.run(self.p, "2026-W41", today=dt.date(2026, 10, 1))
+        section = md[md.index("## Pass"):md.index("## Check-in")]
+        self.assertLess(len(section), self.SESSIONS_BEFORE)
+        self.assertIn("D-019", md)
+
+
+class TestCoachLog(unittest.TestCase):
+    """D-021: archive old entries; parser is shared with brief."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.log = Path(self.tmp.name) / "log" / "coach_log.md"
+        self.log.parent.mkdir()
+        self.log.write_text(_log(("2026-10-10", "new", "n"), ("2026-07-01", "old-jul", "j"),
+                                 ("2026-06-15", "old-jun-a", "a"), ("2026-06-20", "old-jun-b", "b")), encoding="utf-8")
+        self.today = dt.date(2026, 10, 15)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_log_archive_moves_old_entries(self):
+        from trainer import coachlog
+        res = coachlog.archive(self.log, days=60, today=self.today)
+        self.assertEqual(res["moved"], 3)
+        kept = self.log.read_text(encoding="utf-8")
+        self.assertIn("new", kept)
+        self.assertIn("Newest first.", kept)  # header block kept
+        self.assertNotIn("old-jun", kept)
+        jun = (self.log.parent / "archive" / "2026-06.md").read_text(encoding="utf-8")
+        self.assertLess(jun.index("old-jun-b"), jun.index("old-jun-a"))  # newest first inside the file
+        self.assertTrue((self.log.parent / "archive" / "2026-07.md").exists())
+
+    def test_log_archive_idempotent(self):
+        from trainer import coachlog
+        coachlog.archive(self.log, days=60, today=self.today)
+        snap = {f: f.read_text(encoding="utf-8") for f in self.log.parent.rglob("*.md")}
+        res = coachlog.archive(self.log, days=60, today=self.today)
+        self.assertEqual(res["moved"], 0)
+        self.assertEqual(snap, {f: f.read_text(encoding="utf-8") for f in self.log.parent.rglob("*.md")})
+
+
+class TestAgentFiles(unittest.TestCase):
+    """D-019/D-020/D-021: slim CLAUDE.md, skills with frontmatter, read guards."""
+
+    def test_claude_md_size(self):
+        self.assertLessEqual(len((ROOT / "CLAUDE.md").read_text(encoding="utf-8")), 5000)
+
+    def test_skills_have_frontmatter(self):
+        skills = sorted((ROOT / ".claude" / "skills").glob("*/SKILL.md"))
+        self.assertEqual({s.parent.name for s in skills}, {"onboarding", "weekly-loop", "revise-plan"})
+        for s in skills:
+            text = s.read_text(encoding="utf-8")
+            self.assertTrue(text.startswith("---\n"), s)
+            front = text.split("---", 2)[1]
+            self.assertIn(f"name: {s.parent.name}", front)
+            self.assertIn("description:", front)
+
+    def test_rule_ids_preserved(self):
+        text = (ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+        for rid in ("A1", "A2", "A3", "A4", "A5", "A6", "B1", "B2", "B3", "C1", "C2", "C3", "C3a", "C3b", "C4",
+                    "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8"):
+            self.assertIn(f"**{rid}**", text, rid)
+        for name in ("onboarding", "weekly-loop", "revise-plan"):
+            self.assertIn(f".claude/skills/{name}/SKILL.md", text)
+
+    def test_settings_denies_secrets(self):
+        deny = read_json(ROOT / ".claude" / "settings.json")["permissions"]["deny"]
+        self.assertIn("Read(./.env)", deny)
+        self.assertIn("Read(./.garmin_tokens/**)", deny)
+        self.assertIn("Read(./data/raw/**)", deny)
