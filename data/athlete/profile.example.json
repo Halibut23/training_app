@@ -193,5 +193,13 @@
       "change": "Exempelprofil.",
       "by": "template"
     }
-  ]
+  ],
+  "garmin_workouts": {
+    "bike_erg_power_span_w": 10,
+    "bike_power_span_min_w": 20,
+    "run_pace_span_min_s_per_km": 30,
+    "run_hr_span_bpm": 10,
+    "name_prefix": "",
+    "note": "Target spans for workouts pushed to Garmin (R-WO-03). The athlete's preference; edit freely."
+  }
 }

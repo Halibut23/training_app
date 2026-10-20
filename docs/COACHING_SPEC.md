@@ -67,6 +67,16 @@
 | R-STR-02 | Not to failure; reps in reserve per `profile.strength.rir`. |
 | R-STR-03 | Strength counts in total load; avoid heavy leg strength the day before a key bike session or a run. |
 
+## 5a. Structured workouts (Garmin push, D-022)
+
+| ID | Rule |
+|---|---|
+| R-WO-01 | **Every step is programmed.** All executable content of a bike or run session lives in `structure`: warm-up sub-steps (ramps, openers), every recovery, per-rep differences (e.g. rep 1 lower, last rep conditional → separate steps). `instructions` holds only decisions (go/no-go checks, when to abort); short cues go into step `notes`. A label that describes un-programmed sub-steps (e.g. "warm-up incl. 2 × 30 s") is a validation warning. |
+| R-WO-02 | Every bike session states `erg: true\|false`. ERG is the default for indoor structured sessions with power targets; free riding (`false`) for outdoor rides, ramp/test protocols run by another app, and sessions steered by RPE/HR. |
+| R-WO-03 | Target spans follow the athlete's preference `profile.garmin_workouts` (defaults in DESIGN §5.7). ERG: the planned power range is converted to a setpoint (midpoint, rounded) and the Garmin target is setpoint ± half `bike_erg_power_span_w`, because the trainer holds the mean of the span. Free riding: span ≥ `bike_power_span_min_w`. Run pace: span ≥ `run_pace_span_min_s_per_km` (the watch alarm is sensitive). The plan states the intended range; widening happens in the push, never by editing the plan. |
+| R-WO-04 | Primary target: bike = power (cadence secondary); run quality = pace (HR cap secondary); easy/long run = HR cap (R-RUN-08) with pace secondary. Override per step with `garmin_target`. |
+| R-WO-05 | Push only after the athlete has approved the plan; always show a dry run first. Moving a session in Garmin's calendar is normal (R-GEN-11). |
+
 ## 6. Recovery signals
 
 | ID | Rule |
@@ -93,6 +103,7 @@ Personal and date-bound → `data/athlete/season_plan.md` (git-ignored). The age
 
 | Date | Change |
 |---|---|
+| 2026-10-20 | v0.4 — Added §5a R-WO-01…05 (structured workouts pushed to Garmin): every step programmed, ERG flag on bike sessions, target spans from the athlete's preference. |
 | 2026-10-03 | v0.3 — Added R-GEN-11 (weekly menu, order free) and R-GEN-12 (placement rules), from athlete feedback: they read purpose + intensity and place sessions themselves. |
 | 2026-10-01 | v0.2 — Genericised for git (D-015): personal values replaced by profile/goals keys; periodisation moved to `data/athlete/season_plan.md`. Added R-REC-04 (lesson from an aborted session followed by a very hard one). |
 | 2026-10-01 | v0.1.1 — R-BIKE-06: protocol taken from the FTP goal. |

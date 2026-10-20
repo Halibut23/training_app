@@ -16,7 +16,7 @@ def _p(obj):
     print(json.dumps(obj, ensure_ascii=False, indent=2))
 
 
-GUARDED = ("checkin", "context", "new-plan")   # refuse on example/missing profile (D-017)
+GUARDED = ("checkin", "context", "new-plan", "garmin-push")   # refuse on example/missing profile (D-017)
 WARNED = ("status", "validate", "render")
 
 
@@ -36,6 +36,43 @@ def _profile_guard(paths: Paths, cmd: str, allow_example: bool) -> int | None:
         return 3
     print(f"WARNING: {msg}", file=sys.stderr)
     return None
+
+
+def _garmin_push(paths: Paths, a) -> int:
+    from .garmin_workouts import compile_plan, describe
+    week = a.week or week_of(dt.date.today())
+    path = paths.plans / f"{week}.json"
+    if not path.exists():
+        print(f"ERROR: {path} does not exist", file=sys.stderr)
+        return 1
+    plan, profile = read_json(path), _profile(paths)
+    lang = lang_of(profile)
+    errs, _ = plans.validate(plan, paths, profile)
+    compiled, cerrs, cwarns = compile_plan(plan, profile, lang)
+    for w_ in cwarns:
+        print(f"WARNING: {w_}")
+    for e in errs + cerrs:
+        print(f"ERROR: {e}")
+    if errs or cerrs:
+        return 1
+    if a.dry_run:
+        if a.json:
+            _p({sid: c["payload"] for sid, c in compiled.items()})
+            return 0
+        for sid, c in compiled.items():
+            print(f"\n{sid}  {c['date']}  {c['payload']['workoutName']}")
+            print(f"  {c['payload']['description']}")
+            print("\n".join(describe(c["payload"])))
+        print(f"\n{len(compiled)} workout(s) would be pushed (dry run, nothing sent).")
+        return 0
+    from .garmin_client import GarminUnavailable, push
+    try:
+        report = push(paths, plan, profile, lang)
+    except GarminUnavailable as e:
+        print(f"[garmin] {e}", file=sys.stderr)
+        return 2
+    _p({k: v for k, v in report.items() if v and k != "warnings"})
+    return 1 if report["failed"] else 0
 
 
 def main(argv=None) -> int:
@@ -67,6 +104,10 @@ def main(argv=None) -> int:
     la.add_argument("--days", type=int, default=60)
     v = add("validate"); v.add_argument("path")
     r = add("render"); r.add_argument("path")
+    gp = add("garmin-push", help="push planned bike/run sessions as Garmin structured workouts (D-022)")
+    gp.add_argument("--week", default=None)
+    gp.add_argument("--dry-run", action="store_true", help="show compiled steps, no network")
+    gp.add_argument("--json", action="store_true", help="with --dry-run: print the Garmin payloads")
     a = ap.parse_args(argv)
     paths = Paths(a.root) if a.root else Paths()
     if a.cmd != "brief":  # brief writes nothing, not even empty folders (D-019)
@@ -139,6 +180,8 @@ def main(argv=None) -> int:
             return 1
         write_json(out, plans.skeleton(week, lang=lang_of(_profile(paths))))
         print(f"Created {out}")
+    elif a.cmd == "garmin-push":
+        return _garmin_push(paths, a)
     elif a.cmd in ("validate", "render"):
         plan = read_json(a.path)
         errs, warns = plans.validate(plan, paths, read_json(paths.profile))

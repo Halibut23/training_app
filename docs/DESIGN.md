@@ -8,8 +8,8 @@
 |---|---|
 | Owner | see git history |
 | Status | PoC |
-| Last updated | 2026-10-16 |
-| Spec version | 0.6.0 |
+| Last updated | 2026-10-20 |
+| Spec version | 0.7.0 |
 
 ---
 
@@ -25,7 +25,7 @@ initial condition ─► goals ─► weekly plan ─► training (Garmin) ─�
 
 **In scope:** fetching Garmin data, normalising it, computing load metrics, comparing sessions to relevant references, building an analysis context for the agent, and producing validated weekly plans (JSON + Markdown).
 
-**Out of scope (PoC):** UI, multi-user, hosted service, automatic push of workouts to Garmin, medical advice.
+**Out of scope (PoC):** UI, multi-user, hosted service, unreviewed (automatic) push of workouts to Garmin, medical advice. Reviewed push of planned bike/run sessions is in scope (D-022).
 
 ## 2. Architecture
 
@@ -47,6 +47,9 @@ FIT / CSV files ──(data/inbox)────────► data/raw/fit/…, 
                                   Claude analyses (COACHING_SPEC)
                                              ▼
                 plans/W.json ──validate──► render ──► plans/W.md   + log/coach_log.md entry
+                     │
+                     └──garmin-push (after approval, D-022)──► Garmin Connect workouts + calendar
+                                                                (ids in data/garmin/workouts.json)
 ```
 
 ### 2.1 Folder layout
@@ -68,6 +71,7 @@ FIT / CSV files ──(data/inbox)────────► data/raw/fit/…, 
 | `data/derived/` | Normalised data — can always be deleted and rebuilt | Tools only | 🚫 ignored |
 | `data/checkins/` | Subjective weekly check-ins (RPE, limiter status, sleep, notes) | Agent from conversation | 🚫 ignored |
 | `data/context/` | Analysis bundles fed to the agent | Tools only | 🚫 ignored |
+| `data/garmin/workouts.json` | Push state: plan session id → Garmin workout id, schedule id, date, payload hash (D-022) | Tools only | 🚫 ignored |
 | `plans/` | `YYYY-Www.json` (source of truth) + `.md` (rendered) | Agent | 🚫 ignored |
 | `log/coach_log.md` | Decisions, newest first, in the athlete's language (D-021) | Agent | 🚫 ignored |
 | `log/archive/YYYY-MM.md` | Entries older than 60 days, moved by `log-archive` | Tool | 🚫 ignored (`log/*`) |
@@ -100,6 +104,10 @@ python -m trainer context --week W      # analysis bundle for planning week W
 python -m trainer new-plan --week W     # plan skeleton
 python -m trainer validate plans/W.json
 python -m trainer render plans/W.json   # → plans/W.md
+python -m trainer garmin-push --week W [--dry-run] [--json]
+                                        # planned bike/run sessions → Garmin structured workouts, scheduled on the session date (D-022).
+                                        # Idempotent: unchanged → skip, changed → update in place, new date → reschedule,
+                                        # removed/missed/replaced/opt-out → delete. --dry-run prints the compiled steps, no network.
 python -m trainer sync                  # fetch + import + normalize
 python -m trainer log-archive [--days 60]  # move coach-log entries older than N days to log/archive/YYYY-MM.md (idempotent, D-021)
 ```
@@ -130,6 +138,7 @@ Add new decisions at the bottom. Never delete; mark superseded ones.
 | D-018 | 2026-10-08 | Athlete language is `profile.language` (`sv` \| `en`, default `sv`). Chat, interview, check-in, plans, coach log and generated athlete-facing text (rendered plans, context file, rule-flag messages) use it; all strings live in `trainer/i18n.py`. Code, schemas, specs, CLI and validation messages stay English (D-008). During onboarding the agent answers in the language the athlete writes in and stores it. | The repo is shared; non-Swedish friends must get English questions from the first message. One string table keeps both languages in sync. | Active |
 | D-019 | 2026-10-16 | Tiered context reading. A session starts by reading `CLAUDE.md` + the output of `python -m trainer brief` only; further files are read per task tier (tier table in `CLAUDE.md` §0). `data/context/W.md` is the single analysis input for planning; the agent does not re-read profile/goals/plan JSON for facts it contains. | The old §0 read ~74k chars before every session, even for a one-line message; the same facts were read from several places and a context file could be stale. | Active |
 | D-020 | 2026-10-16 | Procedures as on-demand files. Onboarding, the weekly loop and mid-week revision move from `CLAUDE.md` to `.claude/skills/<name>/SKILL.md` (`onboarding`, `weekly-loop`, `revise-plan`). `CLAUDE.md` keeps the rules (IDs unchanged) and an index with explicit paths, so it also works in clients that don't auto-load skills. Refines D-017 (onboarding location). | Rules must always be loaded; procedures only when the task needs them. | Active |
+| D-022 | 2026-10-20 | Push planned sessions to Garmin as structured workouts (resolves OQ-4, N-3). `trainer/garmin_workouts.py` compiles plan `structure` to Garmin workout JSON (stdlib only, testable offline); `garmin_client.push` uploads via `garminconnect` (`upload_workout`, `schedule_workout`, `update_workout`, `delete_workout`). Scope: bike + run sessions with status `planned` and `structure`; strength stays in the plan (Garmin's exercise catalogue is too restrictive). Plan schema: step `kind`, `steps` (sub-steps / repeat groups), `notes`, `recovery_target`, `lap_button`, `garmin_target`; session `erg`, `garmin_push`. Target spans from `profile.garmin_workouts` (R-WO-03). Compile problems are warnings in `validate` and errors in `garmin-push`. Push state lives in a tool-owned file, not in the plan. | The athlete wants the plan on the watch/head unit without manual entry; every step must be programmed and ERG behaviour explicit. Keeping the compiler pure makes it testable without Garmin; keeping ids out of the plan keeps the plan agent-owned (D-007). | Active |
 | D-021 | 2026-10-16 | Coach-log contract and read guards. `log/coach_log.md` is newest-first by heading date (`## YYYY-MM-DD — …`); `brief` sorts entries by that date and never trusts file order. Entries older than 60 days move to `log/archive/YYYY-MM.md` via `trainer log-archive`. `.claude/settings.json` denies reads of secrets, raw data and tool caches (defence in depth for B1/C1; the text rules stay because not every client honours it). | Unbounded log growth and out-of-order entries forced whole-file reads; some files are easy to read by mistake (39 MB of raw wellness JSON). | Active |
 
 ## 4. Constraints
@@ -140,6 +149,7 @@ Add new decisions at the bottom. Never delete; mark superseded ones.
 - **C-T3** First Garmin login with MFA is interactive → must be done by the athlete in a local terminal (`python -m trainer login`). The agent's shell may also lack network access to Garmin → then the athlete runs `python -m trainer sync` and the agent continues from `normalize`/`context`.
 - **C-T4** Garmin rate limits: fetch only the needed window (default 21 days; 120 days at bootstrap). Raw files are cached; already-fetched activities are skipped.
 - **C-T5** Windows host is the primary environment: use `pathlib`, UTF-8 explicitly on all file I/O.
+- **C-T6** `garmin-push` (not `--dry-run`) needs the same environment as `fetch` (Python ≥ 3.12, garminconnect, network) → normally run by the athlete. The write endpoints are unofficial too (C-T2); a failed push leaves the plan untouched and the state file only records successful operations.
 
 ### 4.2 Domain
 Athlete-specific constraints are data, not spec (D-015): budget and strength in `profile.budget`, run limits in `profile.run`, limiter in `profile.injury`, priorities/periodisation in `season_plan.md`. Rules that use them: `COACHING_SPEC.md`.
@@ -179,6 +189,23 @@ Athlete-specific constraints are data, not spec (D-015): budget and strength in 
 ### 5.6 Session types
 `bike_recovery, bike_z2, bike_long, bike_tempo, bike_sweetspot, bike_threshold, bike_vo2, bike_test, run_easy, run_quality, run_long, strength, other`
 
+### 5.7 Garmin workout compilation (D-022, R-WO-01…05)
+Preferences, `profile.garmin_workouts` (all optional; defaults in brackets): `bike_erg_power_span_w` [10], `bike_power_span_min_w` [20], `run_pace_span_min_s_per_km` [30], `run_hr_span_bpm` [10], `name_prefix` [""].
+
+| Plan | Garmin |
+|---|---|
+| step `kind` (default: with ≥ 2 top-level steps the first is `warmup` and the last `cooldown`; all others `interval`) | `stepType` warmup/interval/recovery/rest/cooldown/other |
+| `duration_min` / `distance_km` / `lap_button` | end condition time (s) / distance (m) / lap button; a step with none of them is an error |
+| `reps` > 1 + `duration_min` (+ `recovery_min`, `recovery_target`) | repeat group [interval, recovery] |
+| `reps` + `steps` | repeat group of the sub-steps (`reps` 1 or missing → sub-steps inlined) |
+| `power_w` [lo, hi], `erg: true` | power target setpoint ± span/2, setpoint = round((lo+hi)/2) (hi null → lo) |
+| `power_w`, `erg: false` | power target widened symmetrically to ≥ `bike_power_span_min_w` |
+| `pace_min_km` [fast, slow] | pace target (m/s) widened symmetrically to ≥ `run_pace_span_min_s_per_km` |
+| `hr_max_bpm` (run) | HR target [cap − `run_hr_span_bpm`, cap] |
+| `cadence_rpm` | secondary target (bike) |
+| `notes`, RPE, bike HR cap | step description (cue on the device) |
+| session `purpose`, `fallback`, ERG on/off | workout description; name `<name_prefix>Www <title>` |
+
 ## 6. Open questions
 
 | ID | Question | Impact |
@@ -186,7 +213,7 @@ Athlete-specific constraints are data, not spec (D-015): budget and strength in 
 | OQ-1 | Run LTHR unknown — calibrate from a recent threshold run or race HR. | Run load accuracy (C-M2). |
 | OQ-2 | ~~Does Garmin Connect FTP equal `profile.bike.ftp_w`?~~ **Resolved 2026-10-01:** `garmin_tss` ≈ our TSS (±1) → Garmin uses the profile FTP. | – |
 | OQ-3 | ~~Which ramp-test protocol/app?~~ **Resolved 2026-10-01:** ramp test; protocol recorded in `goals.json` (`test_protocol`). | – |
-| OQ-4 | Should plans be pushed to Garmin as structured workouts? | Nice-to-have N-3. |
+| OQ-4 | ~~Should plans be pushed to Garmin as structured workouts?~~ **Resolved 2026-10-20:** yes, bike + run, after approval (D-022). | – |
 
 ## 7. Known bugs / limitations
 
@@ -208,7 +235,7 @@ Athlete-specific constraints are data, not spec (D-015): budget and strength in 
 |---|---|---|
 | N-1 | React viewer reading `plans/*.json` + `activities.jsonl` (fits the team's existing stack). | Visual feed |
 | N-2 | Scheduled weekly run (Sunday evening) that syncs and drafts next week's plan for review. | Automation |
-| N-3 | Push planned bike sessions as Garmin structured workouts. | Less manual work |
+| N-3 | ~~Push planned bike sessions as Garmin structured workouts.~~ **Done in 0.7.0 (D-022), bike + run.** | – |
 | N-4 | Planned-vs-actual chart per week (hours, TSS, run km). | Insight |
 | N-5 | Auto-detect FTP test / new PBs and propose profile updates. | Less manual bookkeeping |
 | N-6 | Parse Garmin Connect activity CSV export (locale-dependent headers). | Better fallback |
@@ -221,6 +248,7 @@ Athlete-specific constraints are data, not spec (D-015): budget and strength in 
 
 | Date | Version | Change |
 |---|---|---|
+| 2026-10-20 | 0.7.0 | D-022: `trainer garmin-push` (bike + run structured workouts, scheduled, idempotent); plan schema step `kind`/`steps`/`notes`/`recovery_target`/`lap_button`/`garmin_target`, session `erg`/`garmin_push`; `profile.garmin_workouts` spans; COACHING_SPEC R-WO-01…05; `validate` warns on un-programmed steps; C-T6; §5.7. OQ-4 resolved, N-3 done. |
 | 2026-10-16 | 0.6.0 | D-019/D-020/D-021: tiered context reading; `trainer brief`; `trainer log-archive` and coach-log contract; procedures moved to `.claude/skills/`; `CLAUDE.md` ≤ 5,000 chars; `.claude/settings.json` read guards; context file shows only relevant reference deltas. Session start ≈ 8,600 chars (was 74,113); weekly loop ≈ 20,700 chars (was ≈ 90,800). |
 | 2026-10-08 | 0.5.1 | B-009 fixed (compliance matching passes, refines D-016). |
 | 2026-10-08 | 0.5.0 | D-018: `profile.language` (sv/en); athlete-facing strings moved to `trainer/i18n.py`; `render`/`skeleton`/`context`/flags follow the profile language; onboarding detects language (CLAUDE.md §0b). N-10 done. |

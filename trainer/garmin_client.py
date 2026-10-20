@@ -137,3 +137,82 @@ def fetch(paths: Paths, days: int = 21, refetch: bool = False, sleep_s: float = 
             time.sleep(sleep_s)
         d += dt.timedelta(days=1)
     return {"activities_listed": len(acts or []), "activities_new": n_new, "wellness_days": n_well}
+
+
+# ── Push planned sessions as structured workouts (DESIGN D-022) ─────────────
+
+def _schedule_id(resp) -> int | None:
+    if isinstance(resp, dict):
+        for k in ("workoutScheduleId", "scheduleId", "id"):
+            if resp.get(k):
+                return resp[k]
+    return None
+
+
+def push(paths: Paths, plan: dict, profile: dict, lang: str = "sv", api=None) -> dict:
+    """Reconcile a week's plan with Garmin Connect. Idempotent; state in data/garmin/workouts.json.
+
+    new → upload + schedule · payload changed → update in place (keeps schedule) · date changed → reschedule ·
+    removed / missed / replaced / garmin_push false → delete. Done/modified sessions are left alone.
+    `api` is injectable for tests.
+    """
+    from .config import read_json
+    from .garmin_workouts import compile_plan
+
+    compiled, errors, warnings = compile_plan(plan, profile, lang)
+    if errors:
+        raise ValueError("; ".join(errors))
+    state = read_json(paths.garmin_state) if paths.garmin_state.exists() else {}
+    api = api or connect(paths)
+    now = dt.datetime.now().isoformat(timespec="seconds")
+    report = {"created": [], "updated": [], "rescheduled": [], "unchanged": [], "deleted": [], "failed": [],
+              "warnings": warnings}
+
+    def save():
+        write_json(paths.garmin_state, state)
+
+    for sid, c in compiled.items():
+        rec = state.get(sid)
+        try:
+            if rec and rec["hash"] != c["hash"]:
+                try:
+                    api.update_workout(rec["workout_id"], dict(c["payload"], workoutId=rec["workout_id"]))
+                    rec.update(hash=c["hash"], pushed_at=now)
+                    report["updated"].append(sid)
+                except Exception:  # deleted by hand in Garmin → recreate
+                    state.pop(sid)
+                    rec = None
+            if rec is None:
+                wid = api.upload_workout(c["payload"])["workoutId"]
+                rec = state[sid] = {"week": plan["week"], "workout_id": wid, "schedule_id": None, "date": None,
+                                    "hash": c["hash"], "pushed_at": now}
+                save()
+                report["created"].append(sid)
+            if rec["date"] != c["date"]:
+                if rec.get("schedule_id"):
+                    _safe(api.unschedule_workout, rec["schedule_id"])
+                    if sid not in report["created"]:
+                        report["rescheduled"].append(sid)
+                rec.update(schedule_id=_schedule_id(api.schedule_workout(rec["workout_id"], c["date"])),
+                           date=c["date"])
+            elif sid not in report["updated"]:
+                report["unchanged"].append(sid)
+        except Exception as e:
+            report["failed"].append(f"{sid}: {type(e).__name__}: {str(e)[:200]}")
+        save()
+
+    sessions = {s["id"]: s for s in plan.get("sessions", [])}
+    for sid, rec in list(state.items()):
+        if rec.get("week") != plan["week"] or sid in compiled:
+            continue
+        s = sessions.get(sid)
+        if s and s.get("status") in ("done", "modified"):
+            continue  # history: keep the workout that was used
+        try:  # removed, missed/replaced, opted out or no longer pushable
+            api.delete_workout(rec["workout_id"])
+            state.pop(sid)
+            report["deleted"].append(sid)
+        except Exception as e:
+            report["failed"].append(f"{sid}: delete {type(e).__name__}: {str(e)[:200]}")
+        save()
+    return report

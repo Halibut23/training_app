@@ -220,25 +220,48 @@
           "minimum": 0
         },
         "target": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "power_w": {
-              "$ref": "#/$defs/range"
-            },
-            "hr_max_bpm": {
-              "type": "number"
-            },
-            "pace_min_km": {
-              "$ref": "#/$defs/range"
-            },
-            "rpe": {
-              "$ref": "#/$defs/range"
-            },
-            "cadence_rpm": {
-              "$ref": "#/$defs/range"
-            }
-          }
+          "$ref": "#/$defs/target"
+        },
+        "kind": {
+          "enum": [
+            "warmup",
+            "interval",
+            "recovery",
+            "rest",
+            "cooldown",
+            "other"
+          ],
+          "description": "Garmin step type (D-022). Default: with >= 2 top-level steps the first is warmup and the last cooldown; all others interval."
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/step"
+          },
+          "minItems": 1,
+          "description": "Sub-steps. With reps > 1 they form a Garmin repeat group; without reps they are inlined (e.g. warm-up with openers). R-WO-01."
+        },
+        "recovery_target": {
+          "$ref": "#/$defs/target",
+          "description": "Target for the recovery_min shorthand step."
+        },
+        "notes": {
+          "type": "string",
+          "description": "Short cue shown on the watch/head unit for this step."
+        },
+        "lap_button": {
+          "type": "boolean",
+          "description": "Step ends on lap press instead of time/distance."
+        },
+        "garmin_target": {
+          "enum": [
+            "power",
+            "pace",
+            "hr",
+            "cadence",
+            "none"
+          ],
+          "description": "Override the primary Garmin target for this step (default per R-WO-04)."
         }
       }
     },
@@ -353,6 +376,35 @@
           "type": "string",
           "format": "date",
           "description": "Actual date when done; may lie before the plan week if the athlete moved it earlier."
+        },
+        "erg": {
+          "type": "boolean",
+          "description": "Bike only: trainer in ERG mode (true) or free riding (false). Required to push bike sessions (R-WO-02)."
+        },
+        "garmin_push": {
+          "type": "boolean",
+          "description": "false = never push this session to Garmin. Default: bike/run sessions with structure are pushed."
+        }
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "power_w": {
+          "$ref": "#/$defs/range"
+        },
+        "hr_max_bpm": {
+          "type": "number"
+        },
+        "pace_min_km": {
+          "$ref": "#/$defs/range"
+        },
+        "rpe": {
+          "$ref": "#/$defs/range"
+        },
+        "cadence_rpm": {
+          "$ref": "#/$defs/range"
         }
       }
     }

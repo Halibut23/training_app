@@ -28,6 +28,7 @@ class Paths:
         self.wellness = self.derived / "wellness.jsonl"
         self.checkins = self.data / "checkins"
         self.context = self.data / "context"
+        self.garmin_state = self.data / "garmin" / "workouts.json"  # push state (D-022)
         self.plans = r / "plans"
         self.log = r / "log" / "coach_log.md"
         self.schemas = r / "schemas"

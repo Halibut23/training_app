@@ -1,0 +1,652 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+</head>
+<body>
+<title>Optimering i AbS</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;600;700&family=Roboto:wght@400;500;700&family=Merriweather+Sans:ital,wght@1,700&display=swap">
+<style>
+/* Layout: mörk rubrikband, därunder ett simbanediagram (faser som band) som byggs upp steg för steg, och en beskrivningspanel med navigering. */
+:root {
+  --bg: #f5f4f1;
+  --surface: #ffffff;
+  --ink: #0c2340;
+  --muted: rgba(12,35,64,.64);
+  --line: rgba(12,35,64,.14);
+  --band: #f2f7f5;
+  --band-active: #dff3ee;
+  --band-setup: #f5f4f1;
+  --band-el: #fbf8e1;
+  --band-el-strong: #f6efbf;
+  --band-stroke: rgba(12,35,64,.10);
+  --act-bg: #2ed9c2;
+  --act-ink: #0c2340;
+  --art-bg: #0c2340;
+  --art-ink: #ffffff;
+  --dec-bg: #efe68b;
+  --dec-ink: #0c2340;
+  --in-bg: #c9dee3;
+  --in-ink: #0c2340;
+  --tag-bg: #0497a3;
+  --tag-ink: #ffffff;
+  --edge: rgba(12,35,64,.42);
+  --edge-active: #0497a3;
+  --header-bg: #0c2340;
+  --header-ink: #ffffff;
+  --header-muted: rgba(255,255,255,.66);
+  --chip-bg: rgba(46,217,194,.18);
+  --font-heading: 'Overpass', Arial, sans-serif;
+  --font-body: 'Roboto', Arial, sans-serif;
+  --font-accent: 'Merriweather Sans', Georgia, serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #071629; --surface: #0e2645; --ink: #e6f0f2; --muted: rgba(230,240,242,.66);
+    --line: rgba(230,240,242,.14); --band: #0c2240; --band-active: #123a5e; --band-setup: #091d36; --band-el: #1e2a2f; --band-el-strong: #33392c; --band-stroke: rgba(230,240,242,.10);
+    --art-bg: #c9dee3; --art-ink: #0c2340; --in-bg: #1f4a6e; --in-ink: #e6f0f2; --edge: rgba(230,240,242,.42); --edge-active: #2ed9c2;
+    --header-bg: #04101f; --chip-bg: rgba(46,217,194,.16);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #071629; --surface: #0e2645; --ink: #e6f0f2; --muted: rgba(230,240,242,.66);
+  --line: rgba(230,240,242,.14); --band: #0c2240; --band-active: #123a5e; --band-setup: #091d36; --band-el: #1e2a2f; --band-el-strong: #33392c; --band-stroke: rgba(230,240,242,.10);
+  --art-bg: #c9dee3; --art-ink: #0c2340; --in-bg: #1f4a6e; --in-ink: #e6f0f2; --edge: rgba(230,240,242,.42); --edge-active: #2ed9c2;
+  --header-bg: #04101f; --chip-bg: rgba(46,217,194,.16);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.55; }
+.wrap { max-width: 1320px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+
+header.top { background: var(--header-bg); color: var(--header-ink); }
+header.top .wrap { padding-block: 22px 20px; display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; }
+.eyebrow { font-family: var(--font-heading); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: #2ed9c2; font-weight: 600; }
+h1 { font-family: var(--font-heading); font-weight: 600; font-size: clamp(26px, 3.4vw, 38px); line-height: 1.1; margin: 4px 0 0; text-wrap: balance; }
+.version { font-size: 13px; color: var(--header-muted); }
+.gradbar { height: 4px; background: linear-gradient(90deg, #67c5b2, #0eafb6); }
+
+main .wrap { padding-block: 20px 40px; display: grid; gap: 16px; }
+
+.diagram { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.diagram svg { display: block; width: 100%; min-width: 940px; height: auto; }
+
+/* SVG */
+.band rect.bg { fill: var(--band); stroke: var(--band-stroke); transition: fill .3s; }
+.band.setup rect.bg { fill: var(--band-setup); stroke: var(--edge); stroke-dasharray: 6 5; }
+.band .badge rect { fill: var(--chip-bg); }
+.band .badge text { font-family: var(--font-body); font-size: 11px; fill: var(--ink); text-anchor: middle; dominant-baseline: central; text-transform: none; letter-spacing: 0; font-weight: 500; }
+.band text.name { font-family: var(--font-heading); font-weight: 600; font-size: 12px; letter-spacing: .1em; fill: var(--muted); text-transform: uppercase; }
+.band.is-active rect.bg { fill: var(--band-active); }
+.band.is-active text.name { fill: var(--ink); }
+
+.node, .edge { transition: opacity .35s ease; }
+.node.is-hidden, .edge.is-hidden { opacity: 0; pointer-events: none; }
+.node.is-past, .edge.is-past { opacity: .5; }
+.node { cursor: pointer; }
+.node .shape { stroke: transparent; stroke-width: 3; transition: stroke .2s; }
+.node.activity .shape { fill: var(--act-bg); }
+.node.artifact .shape { fill: var(--art-bg); }
+.node.decision .shape { fill: var(--dec-bg); }
+.node .label { font-family: var(--font-body); font-weight: 500; font-size: 12.5px; text-anchor: middle; dominant-baseline: central; }
+.node.activity .label { fill: var(--act-ink); }
+.node.artifact .label { fill: var(--art-ink); font-size: 13px; }
+.node.decision .label { fill: var(--dec-ink); font-size: 11.5px; }
+.node.input .shape { fill: var(--in-bg); }
+.node.event .shape { fill: #0497a3; }
+.node.event .label { fill: #ffffff; font-weight: 700; }
+.node.input .label { fill: var(--in-ink); font-weight: 700; font-size: 12px; }
+.node.input .label.sub { font-weight: 400; font-size: 11px; }
+.edge.input-edge path { stroke-dasharray: 2 3; }
+.node.is-current .shape { stroke: var(--edge-active); }
+.node:focus-visible { outline: none; }
+.node:focus-visible .shape { stroke: var(--ink); }
+.tag rect { fill: var(--tag-bg); }
+.tag text { fill: var(--tag-ink); font-family: var(--font-body); font-size: 11px; text-anchor: middle; dominant-baseline: central; }
+
+.edge path { fill: none; stroke: var(--edge); stroke-width: 1.6; stroke-linejoin: round; }
+.edge text { font-family: var(--font-body); font-size: 11.5px; font-weight: 700; fill: var(--muted); }
+.edge.dashed path { stroke-dasharray: 5 4; }
+.edge text.mid { font-weight: 500; font-style: italic; }
+.edge.is-current path { stroke: var(--edge-active); stroke-width: 2.4; }
+.edge.is-current text { fill: var(--edge-active); }
+.arrow-head { fill: var(--edge); }
+.arrow-head-active { fill: var(--edge-active); }
+
+/* Panel */
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 20px 22px; display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 20px 32px; }
+.panel .meta-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 6px; }
+.chip { font-family: var(--font-heading); font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; padding: 3px 10px 2px; border-radius: 99px; background: var(--chip-bg); color: var(--ink); }
+.stepno { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.panel h2 { font-family: var(--font-heading); font-weight: 600; font-size: 24px; line-height: 1.2; margin: 0 0 8px; text-wrap: balance; }
+.panel p { margin: 0; max-width: 62ch; }
+.panel .story { font-family: var(--font-accent); font-style: italic; font-weight: 700; font-size: 17px; line-height: 1.45; color: var(--ink); border-left: 3px solid; border-image: linear-gradient(#67c5b2, #0eafb6) 1; padding-left: 14px; margin: 4px 0 14px; max-width: 58ch; }
+.panel .story:empty { display: none; }
+.facts { display: grid; gap: 14px; align-content: start; }
+.facts h3 { font-family: var(--font-heading); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 0 0 6px; font-weight: 600; }
+.facts ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.facts li { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 10px; align-items: baseline; }
+.pill { flex: none; font-size: 12px; font-weight: 700; padding: 1px 8px; border-radius: 4px; }
+.pill.ja { background: #2ed9c2; color: #0c2340; }
+.pill.nej { background: #efe68b; color: #0c2340; }
+.pill.key { background: var(--chip-bg); color: var(--ink); font-weight: 600; }
+.pill.out { background: #0497a3; color: #fff; font-weight: 500; }
+
+.controls { display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: center; justify-content: space-between; }
+.nav { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+button { font: inherit; cursor: pointer; }
+.btn { font-family: var(--font-heading); font-weight: 600; font-size: 14px; padding: 9px 16px 8px; border-radius: 6px; border: 1.5px solid var(--edge-active); background: transparent; color: var(--ink); }
+.btn.primary { background: #2ed9c2; border-color: #2ed9c2; color: #0c2340; }
+.btn:disabled { opacity: .4; cursor: default; }
+.btn:focus-visible, .dot:focus-visible { outline: 2px solid var(--edge-active); outline-offset: 2px; }
+.dots { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; }
+.dot-group { display: flex; gap: 4px; align-items: center; }
+.dot-group span { font-size: 11px; color: var(--muted); margin-right: 4px; font-family: var(--font-heading); text-transform: uppercase; letter-spacing: .08em; }
+.dot { width: 26px; height: 26px; border-radius: 50%; border: 1.5px solid var(--line); background: transparent; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; padding: 0; }
+.dot.done { border-color: var(--edge-active); color: var(--ink); }
+.dot.current { background: var(--edge-active); border-color: var(--edge-active); color: var(--surface); font-weight: 700; }
+.switch { display: inline-flex; align-items: center; gap: 10px; padding: 7px 14px 7px 8px; border-radius: 99px; border: 1.5px solid var(--line); background: var(--surface); color: var(--ink); font-family: var(--font-heading); font-weight: 600; font-size: 14px; }
+.switch .track { width: 36px; height: 20px; border-radius: 99px; background: var(--line); position: relative; transition: background .2s; flex: none; }
+.switch .knob { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--surface); box-shadow: 0 1px 2px rgba(12,35,64,.3); transition: transform .2s; }
+.switch[aria-pressed="true"] { border-color: #d2c94f; background: var(--band-el-strong); }
+.switch[aria-pressed="true"] .track { background: #0c2340; }
+.switch[aria-pressed="true"] .knob { transform: translateX(16px); background: #efe68b; }
+.switch:focus-visible { outline: 2px solid var(--edge-active); outline-offset: 2px; }
+.band.layer-el rect.bg { fill: var(--band-el); stroke: rgba(210,201,79,.55); }
+.band.layer-el.is-active rect.bg { fill: var(--band-el-strong); }
+.dot.layer-el { border-style: dashed; }
+.dot-group.layer-el span { color: var(--ink); }
+.layer-hint { font-size: 13.5px; background: var(--band-el); border: 1px solid rgba(210,201,79,.55); border-radius: 8px; padding: 10px 12px; }
+.hint { font-size: 12.5px; color: var(--muted); }
+kbd { font-family: inherit; font-size: 11px; border: 1px solid var(--line); border-radius: 3px; padding: 0 5px; }
+
+@media (max-width: 760px) {
+  .panel { grid-template-columns: minmax(0, 1fr); padding: 16px; }
+  .hint { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .node, .edge, .band rect.bg { transition: none; }
+}
+</style>
+
+<header class="top">
+  <div class="wrap">
+    <div>
+      <div class="eyebrow">Arbetssätt</div>
+      <h1>Optimering i AbS</h1>
+    </div>
+    <div class="version">Processbeskrivning · version 0.7 (utkast)</div>
+  </div>
+  <div class="gradbar"></div>
+</header>
+
+<main>
+  <div class="wrap">
+    <div class="diagram" id="diagram" aria-label="Processdiagram"></div>
+
+    <div class="controls">
+      <div class="nav">
+        <button class="btn" id="prev" type="button">← Föregående</button>
+        <button class="btn primary" id="next" type="button">Nästa →</button>
+        <button class="btn" id="all" type="button">Visa hela processen</button>
+        <button class="switch" id="layer-el" type="button" aria-pressed="false"><span class="track" aria-hidden="true"><span class="knob"></span></span><span>Elhandel</span></button>
+      </div>
+      <div class="dots" id="dots"></div>
+    </div>
+
+    <section class="panel" id="panel" aria-live="polite">
+      <div>
+        <div class="meta-row"><span class="chip" id="p-phase"></span><span class="stepno" id="p-no"></span></div>
+        <h2 id="p-title"></h2>
+        <p class="story" id="p-story"></p>
+        <p id="p-text"></p>
+      </div>
+      <div class="facts" id="p-facts"></div>
+    </section>
+
+    <div class="hint">Bläddra med <kbd>→</kbd> / <kbd>←</kbd> eller mellanslag. Klicka på en ruta i diagrammet för att hoppa dit. <kbd>E</kbd> slår av och på elhandel.</div>
+  </div>
+</main>
+
+<script>
+/* =====================================================================
+   PROCESSDATA – redigera här för att göra tillägg.
+   - PHASES: faserna (band). row = [rad utan elhandel, rad med elhandel], cols = [första, sista] kolumn.
+   - NODES:  rutorna. type: 'activity' | 'artifact' | 'decision' | 'input' | 'event'.
+             col får vara decimaltal. lines = textrader. outputs = taggar under rutan.
+   - EDGES:  pilarna. route: 'h', 'v', 'backTop', 'wrap', 'loopUpLeft', 'underTo', 'loopUnder', 'drop', 'rise'.
+   - STEPS:  ordningen som processen visas i. nodes = vilka rutor steget tänder.
+   - layer: 'el' markerar det som hör till elhandelslagret (visas bara när det är påslaget).
+   ===================================================================== */
+const PHASES = [
+  { id: 'daglig', name: 'Daglig planering', row: [0, 0], cols: [0, 6], badge: 'Varje timme · vid ny data' },
+  { id: 'el',     name: 'Elhandel',         row: [null, 1], cols: [0.62, 6], layer: 'el' },
+  { id: 'drift',  name: 'Daglig drift',     row: [1, 2], cols: [0, 3], badge: 'Löpande' },
+  { id: 'vlar',   name: 'Veckolärande',     row: [1, 2], cols: [4, 6], badge: 'Varje vecka' },
+];
+
+// Återkommande listor i beskrivningspanelen
+const FORUTSATTNINGAR = { title: 'Förutsättningar', items: [
+  ['Prognoser', 'Värmelast och elpris, ibland även spillvärme och/eller ångleveranser'],
+  ['Avvikelser', 'Det som ändrats mot plan'],
+  ['Bränslepriser', ''],
+  ['Mätvärden', 'Vilka enheter är i drift? Hur mycket energi finns i ackumulatorn?'],
+] };
+const MATVARDEN = { title: 'Mätvärden ger randvillkor', items: [
+  ['Enheter', 'Vilka enheter är i drift just nu?'],
+  ['Ackumulator', 'Hur mycket energi finns lagrad?'],
+] };
+const OPTIMERING = { title: 'Optimeringen', items: [
+  ['Horisont', '7 × 24 timmar (168 h)'],
+  ['Upplösning', '1 timme'],
+  ['Rullande', 'Nya prognoser varje timme. Finns ny data optimeras det om.'],
+] };
+const MARKNADER = { title: 'Elmarknaderna', items: [
+  ['mFRR', 'Gate closure 07:30 för D+1. Övrig kapacitet erbjuds här.'],
+  ['Day-ahead', 'Gate closure 12:00 för D+1. Här låser man in sig utifrån flexibiliteten.'],
+  ['Intradag', 'Kontinuerlig marknad med orderdjup. Används för att handla sig i balans.'],
+] };
+
+const NODES = [
+  // Daglig planering
+  { id: 'start',   phase: 'daglig', col: 0, type: 'event', lines: ['Ny timme, ny data'] },
+  { id: 'matchar', phase: 'daglig', col: 0, type: 'decision', size: [152, 86], lines: ['Vad är dagens', 'förutsättningar?'] },
+  { id: 'in_forut', phase: 'daglig', col: 1.25, type: 'input', size: [196, 44], lines: ['Förutsättningar', 'prognoser · avvikelser · bränslepriser'] },
+  { id: 'just',    phase: 'daglig', col: 1.25, type: 'activity', lines: ['Justera inställningar', 'för gällande', 'förutsättningar'], outputs: ['Inställningar'] },
+  { id: 'inst2',   phase: 'daglig', col: 2.2, type: 'artifact', lines: ['Inställningar', 'justerade'] },
+  { id: 'in_mat',  phase: 'daglig', col: 3.15, type: 'input', size: [204, 62], lines: ['Mätvärden', 'Vilka enheter är i drift?', 'Hur full är ackumulatorn?'] },
+  { id: 'opt2',    phase: 'daglig', col: 3.15, type: 'activity', lines: ['Optimera'], outputs: ['Körplan'] },
+  { id: 'kp2',     phase: 'daglig', col: 4.1, type: 'artifact', lines: ['Uppdaterad', 'körplan'] },
+  { id: 'verif2',  phase: 'daglig', col: 5.05, type: 'activity', lines: ['Verifiera', 'veckoplan/körplan'], outputs: ['Körplan: plan + prognos'] },
+  { id: 'verifierat', phase: 'daglig', col: 6, type: 'decision', lines: ['Verifierat?'] },
+  // Elhandel (lager)
+  { id: 'el_flex', phase: 'el', col: 1, type: 'activity', lines: ['Bedöm flexibilitet', 'mot day-ahead'], outputs: ['Körplan + elprisprognos'] },
+  { id: 'el_mfrr', phase: 'el', col: 2, type: 'activity', lines: ['Bjud övrig', 'kapacitet till mFRR'], outputs: ['Stänger 07:30 för D+1'] },
+  { id: 'el_da',   phase: 'el', col: 3, type: 'activity', lines: ['Lägg bud på', 'day-ahead'], outputs: ['Stänger 12:00 för D+1'] },
+  { id: 'el_plan', phase: 'el', col: 4, type: 'artifact', lines: ['Elplan'], outputs: ['Randvillkor'] },
+  { id: 'el_dev',  phase: 'el', col: 5, type: 'decision', size: [140, 84], lines: ['Avvikelse från', 'elplanen?'] },
+  { id: 'el_id',   phase: 'el', col: 6, type: 'activity', lines: ['Handla i balans', 'på intradag'], outputs: ['Kontinuerlig handel'] },
+  // Daglig drift
+  { id: 'kommf',   phase: 'drift', col: 0, type: 'activity', lines: ['Kommunicera', 'förutsättningar'], outputs: ['Körplan: plan + prognos'] },
+  { id: 'kor',     phase: 'drift', col: 1, type: 'activity', lines: ['Kör enligt plan'], outputs: ['Körplan'] },
+  { id: 'oplan',   phase: 'drift', col: 2, type: 'decision', size: [158, 94], lines: ['Ny data eller', 'oplanerad', 'händelse?'] },
+  // Veckolärande
+  { id: 'vecko',   phase: 'vlar', col: 5, type: 'activity', lines: ['Veckouppföljning', 'produktion'], outputs: ['Uppföljning produktion'] },
+];
+
+const EDGES = [
+  { from: 'start', to: 'matchar', route: 'v' },
+  { from: 'matchar', to: 'just', route: 'h', label: 'Ändrade' },
+  { from: 'matchar', to: 'kommf', route: 'v', label: 'Som planerat' },
+  { from: 'in_forut', to: 'just', route: 'v' },
+  { from: 'in_mat', to: 'opt2', route: 'v' },
+  { from: 'just', to: 'inst2', route: 'h' },
+  { from: 'inst2', to: 'opt2', route: 'h' },
+  { from: 'opt2', to: 'kp2', route: 'h' },
+  { from: 'kp2', to: 'verif2', route: 'h' },
+  { from: 'verif2', to: 'verifierat', route: 'h' },
+  { from: 'verifierat', to: 'matchar', route: 'backTop', label: 'Nej' },
+  { from: 'verifierat', to: 'kommf', route: 'wrap', margin: 52, label: 'Ja' },
+  // Elhandel
+  { from: 'kp2', to: 'el_flex', route: 'drop' },
+  { from: 'el_flex', to: 'el_mfrr', route: 'h' },
+  { from: 'el_mfrr', to: 'el_da', route: 'h' },
+  { from: 'el_da', to: 'el_plan', route: 'h' },
+  { from: 'el_plan', to: 'opt2', route: 'rise', fromDx: -26, toDx: 50 },
+  { from: 'el_plan', to: 'el_dev', route: 'h' },
+  { from: 'el_dev', to: 'el_id', route: 'h', label: 'Ja' },
+  { from: 'el_dev', to: 'el_plan', route: 'backTop', toDx: 26, label: 'Nej' },
+  { from: 'el_id', to: 'el_plan', route: 'backTop', toDx: 26, dy: -16, label: 'Ny position' },
+  // Drift och lärande
+  { from: 'kommf', to: 'kor', route: 'h' },
+  { from: 'kor', to: 'oplan', route: 'h' },
+  { from: 'oplan', to: 'kor', route: 'backTop', label: 'Nej' },
+  { from: 'oplan', to: 'matchar', route: 'loopUpLeft', margin: 34, label: 'Ja' },
+  { from: 'kor', to: 'vecko', route: 'underTo', dashed: true, label: 'Varje vecka', labelMid: true },
+  { from: 'vecko', to: 'matchar', route: 'loopUnder', margin: 16, dashed: true, label: 'Lärdomar förs in i planeringen vid behov', labelMid: true },
+];
+
+const STEPS = [
+  { phase: null, title: 'En plan som aldrig står still',
+    story: 'Bakom varje varmt element finns hundratals beslut. Vilken panna ska gå? När lönar det sig att producera el? Ska ackumulatorn laddas nu eller i natt?',
+    text: 'Förutsättningarna i ett fjärrvärmesystem ändras hela tiden: vädret, elpriset, tillgängligheten. Med AbS blir planeringen en daglig rytm där planen följer verkligheten. Varje timme kommer nya prognoser, och när ny data finns optimeras de kommande 7 × 24 timmarna om.',
+    nodes: [] },
+  { phase: 'daglig', title: 'Vad är dagens förutsättningar?',
+    story: 'Natten blev kallare än prognosen och morgondagens elpriser har just publicerats. Håller gårdagens plan fortfarande?',
+    text: 'Varje gång ny data kommer in, i praktiken varje timme, stäms körplanen av mot de förutsättningar som gäller just nu.',
+    nodes: ['start', 'matchar'],
+    outcomes: [['Som planerat', 'Planen gäller. Gå direkt till Kommunicera förutsättningar.'], ['Ändrade', 'Justera inställningar och förutsättningar.']],
+    lists: [FORUTSATTNINGAR] },
+  { phase: 'daglig', title: 'Justera inställningar för gällande förutsättningar',
+    story: 'Det som ändrats ska in i modellen, inte stanna i någons anteckningar eller huvud.',
+    text: 'Inställningar och förutsättningar uppdateras så att de speglar läget nu: nya prognoser, avvikelser och bränslepriser.',
+    nodes: ['in_forut', 'just', 'inst2'], outputs: ['Inställningar'], lists: [FORUTSATTNINGAR] },
+  { phase: 'daglig', title: 'Optimera',
+    story: 'Vilka enheter är i drift just nu? Hur mycket energi finns i ackumulatorn? Utifrån läget här och nu räknar AbS fram den bästa vägen genom veckan.',
+    text: 'AbS optimerar om för de kommande 7 × 24 timmarna med timupplösning. Aktuella mätvärden ger randvillkoren: vilka enheter som är i drift och hur mycket energi som finns i ackumulatorn. Resultatet är en uppdaterad körplan.',
+    textEl: ' Med elhandel påslaget är också den inlåsta elplanen ett randvillkor.',
+    nodes: ['in_mat', 'opt2', 'kp2'], outputs: ['Körplan'], inputs: ['Mätvärden'], inputsEl: ['Elplan'], lists: [MATVARDEN, OPTIMERING] },
+  { phase: 'daglig', title: 'Verifiera veckoplan/körplan',
+    story: 'Optimeringen föreslår, människan avgör. Ser planen ut som något vi faktiskt vill köra?',
+    text: 'Den uppdaterade körplanen för veckan granskas, både planen och prognosen.',
+    nodes: ['verif2'], outputs: ['Körplan: plan', 'Körplan: prognos'] },
+  { phase: 'daglig', title: 'Verifierat?',
+    story: 'Först när planen känns rätt lämnar den planeringsbordet.',
+    text: 'Håller planen? Först när den är verifierad går den vidare till driften.',
+    nodes: ['verifierat'],
+    outcomes: [['Ja', 'Vidare till Kommunicera förutsättningar.'], ['Nej', 'Tillbaka till dagens förutsättningar.']] },
+
+  // ---- Elhandel: inför nästa dygn ----
+  { layer: 'el', phase: 'el', title: 'Bedöm flexibiliteten mot day-ahead',
+    story: 'Hur mycket el kan vi producera i morgon, och när är den värd mest? Svaret finns i flexibiliteten i värmesystemet.',
+    text: 'Den optimerade körplanen och elprisprognosen visar hur mycket flexibilitet som finns. Oftast låser man in sig mot day-ahead utifrån den flexibiliteten, och det som blir över kan användas på andra marknader.',
+    nodes: ['el_flex'], outputs: ['Körplan + elprisprognos'], lists: [MARKNADER] },
+  { layer: 'el', phase: 'el', title: 'Bjud övrig kapacitet till mFRR',
+    story: 'Kapacitet som inte behövs för elplanen kan ändå göra nytta som reserv åt elsystemet.',
+    text: 'Den kapacitet som inte behövs mot day-ahead kan erbjudas till mFRR. Gate closure för D+1 är 07:30, alltså före day-ahead.',
+    nodes: ['el_mfrr'],
+    lists: [{ title: 'mFRR', items: [['Gate closure', '07:30 för D+1'], ['Vad', 'Övrig kapacitet utöver DA-positionen']] }] },
+  { layer: 'el', phase: 'el', title: 'Lägg bud på day-ahead',
+    story: 'Klockan 12:00 stänger day-ahead. Efter det är morgondagens elplan i stort sett bestämd.',
+    text: 'Buden till day-ahead läggs utifrån flexibiliteten i planen. Gate closure för D+1 är 12:00.',
+    nodes: ['el_da'],
+    lists: [{ title: 'Day-ahead', items: [['Gate closure', '12:00 för D+1'], ['Vad', 'Inlåsning utifrån flexibiliteten']] }] },
+  { layer: 'el', phase: 'el', title: 'Elplanen blir ett randvillkor',
+    story: 'Det vi har sålt ska vi leverera. Nu får värmeproduktionen planeras runt elplanen.',
+    text: 'Utfallet på marknaderna ger elplanen. Den förs tillbaka in i optimeringen som ett randvillkor, så att värmeproduktionen planeras runt de inlåsta volymerna.',
+    nodes: ['el_plan'], outputs: ['Elplan'] },
+
+  { phase: 'drift', title: 'Kommunicera förutsättningar',
+    story: 'En plan gör bara nytta om alla vet vad som gäller.',
+    text: 'Gällande plan och prognos kommuniceras inför driften.',
+    nodes: ['kommf'], outputs: ['Körplan: plan', 'Körplan: prognos'] },
+  { phase: 'drift', title: 'Kör enligt plan',
+    story: 'Planen blir verklighet, timme för timme.',
+    text: 'Driften följer den gällande körplanen.',
+    nodes: ['kor'], outputs: ['Körplan'] },
+  { phase: 'drift', title: 'Ny data eller oplanerad händelse?',
+    story: 'En ny prognos, ett nytt elpris, en enhet som löser ut. Verkligheten slutar aldrig ändra sig, och planen behöver inte heller stå still.',
+    text: 'Varje timme kommer nya prognoser, och nya mätvärden eller avvikelser kan ändra förutsättningarna. Finns ny data är det relevant att optimera om.',
+    nodes: ['oplan'],
+    outcomes: [['Ja', 'Tillbaka till dagens förutsättningar och optimera om.'], ['Nej', 'Fortsätt köra enligt gällande plan.']],
+    lists: [FORUTSATTNINGAR] },
+
+  // ---- Elhandel: under driftdygnet ----
+  { layer: 'el', phase: 'el', title: 'Avvikelse från elplanen?',
+    story: 'Ett nytt mätvärde visar att vi inte kommer att producera det vi har sålt. Varje MWh i obalans kan kosta.',
+    text: 'Under driften jämförs den planerade produktionen med elplanen. Nya prognoser och händelser kan göra att man avviker.',
+    nodes: ['el_dev'],
+    outcomes: [['Ja', 'Handla dig i balans på intradag.'], ['Nej', 'Elplanen gäller.']] },
+  { layer: 'el', phase: 'el', title: 'Handla i balans på intradag',
+    story: 'Obalansen behöver inte bli ett problem. På intradag går det att köpa eller sälja sig tillbaka i balans.',
+    text: 'Intradag (ID) är en kontinuerlig marknad med ett orderdjup av priser och volymer. Där handlar man sig i balans när man avviker från elplanen. Affären ger en ny position och en uppdaterad elplan.',
+    nodes: ['el_id'], outputs: ['Ny position i elplanen'],
+    lists: [{ title: 'Intradag', items: [['Handel', 'Kontinuerlig'], ['Orderdjup', 'Priser och volymer'], ['Syfte', 'Handla sig i balans mot elplanen']] }] },
+
+  { phase: 'vlar', title: 'Veckouppföljning produktion',
+    story: 'Vad lärde vi oss den här veckan? Varje avvikelse är en chans att göra nästa plan lite bättre.',
+    text: 'Produktionen följs upp varje vecka. Lärdomarna förs vid behov tillbaka in i den dagliga planeringen.',
+    nodes: ['vecko'], outputs: ['Uppföljning produktion'] },
+  { phase: null, title: 'Hela processen',
+    story: 'Inte en plan som görs en gång, utan en plan som lever med verkligheten.',
+    text: 'Varje timme kommer ny data. Den dagliga planeringen tar in förutsättningarna och mätvärdena, optimerar om de kommande 168 timmarna, och driften följer den uppdaterade planen. Varje vecka följs produktionen upp och lärdomarna förs tillbaka in i planeringen.',
+    textEl: ' Med elhandel låser man in sig mot day-ahead, erbjuder övrig kapacitet till mFRR och handlar sig i balans på intradag. Elplanen blir ett randvillkor i optimeringen.',
+    nodes: 'all', overview: true,
+    lists: [{ title: 'Återkopplingar', items: [['Varje timme', 'Ny data eller oplanerad händelse → optimera om'], ['Varje vecka', 'Veckouppföljning → lärdomar in i planeringen']] }],
+    listsEl: [MARKNADER] },
+];
+
+/* ===================== Rendering – behöver normalt inte ändras ===================== */
+const G = { W: 1240, X0: 80, colW: 160, top: 16, gap: 40 };
+const ROW_DEFS = {
+  daglig: { h: 244, node: 168, loop: 106 },
+  el:     { h: 186, node: 102, loop: 44 },
+  drift:  { h: 182, node: 106, loop: 44 },
+};
+const SIZE = { activity: [128, 60], artifact: [120, 48], decision: [136, 80], input: [170, 44], event: [150, 36] };
+const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+
+let LAYER = false;
+let P = [], N = [], E = [], S = [], ROW = [], phaseById = {}, nodeById = {}, nodeStep = {};
+const rowH = r => ROW[r].h;
+const rowTop = r => G.top + ROW.slice(0, r).reduce((a, x) => a + x.h + G.gap, 0);
+const cx = c => G.X0 + c * G.colW + G.colW / 2;
+const A = {
+  top: n => ({ x: n.x, y: n.y - n.h / 2 }),
+  bottom: n => ({ x: n.x, y: n.y + n.h / 2 }),
+  left: n => ({ x: n.x - n.w / 2, y: n.y }),
+  right: n => ({ x: n.x + n.w / 2, y: n.y }),
+};
+
+function layout() {
+  const on = l => !l || LAYER;
+  P = PHASES.filter(p => on(p.layer)).map(p => ({ ...p, r: p.row[LAYER ? 1 : 0] }));
+  phaseById = Object.fromEntries(P.map(p => [p.id, p]));
+  ROW = LAYER ? [ROW_DEFS.daglig, ROW_DEFS.el, ROW_DEFS.drift] : [ROW_DEFS.daglig, ROW_DEFS.drift];
+  G.H = G.top + ROW.reduce((a, r) => a + r.h, 0) + (ROW.length - 1) * G.gap + 36;
+  N = NODES.filter(n => phaseById[n.phase]).map(n => {
+    const r = phaseById[n.phase].r, [w, h] = n.size || SIZE[n.type];
+    return { ...n, row: r, w, h, x: cx(n.col), y: rowTop(r) + (n.type === 'input' || n.type === 'event' ? 66 : ROW[r].node) };
+  });
+  nodeById = Object.fromEntries(N.map(n => [n.id, n]));
+  E = EDGES.filter(e => nodeById[e.from] && nodeById[e.to]).map(e => ({ ...e }));
+  S = STEPS.filter(s => on(s.layer));
+  nodeStep = {};
+  S.forEach((s, i) => { if (Array.isArray(s.nodes)) s.nodes.forEach(id => { if (!(id in nodeStep)) nodeStep[id] = i; }); });
+  N.forEach(n => { if (!(n.id in nodeStep)) nodeStep[n.id] = S.length - 1; });
+  E.forEach(e => { e.step = Math.max(nodeStep[e.from], nodeStep[e.to]); });
+}
+
+function routePoints(e) {
+  const a = nodeById[e.from], b = nodeById[e.to];
+  switch (e.route) {
+    case 'h': return [A.right(a), A.left(b)];
+    case 'v': return [A.bottom(a), A.top(b)];
+    case 'backTop': {
+      const p = A.top(a), t = A.top(b), y = rowTop(a.row) + ROW[a.row].loop + (e.dy || 0);
+      t.x += e.toDx || 0;
+      return [p, { x: p.x, y }, { x: t.x, y }, t];
+    }
+    case 'drop': {
+      const p = A.bottom(a), t = A.top(b), gy = rowTop(a.row) + rowH(a.row) + G.gap / 2 - 8;
+      return [p, { x: p.x, y: gy }, { x: t.x, y: gy }, t];
+    }
+    case 'rise': {
+      const p = A.top(a), gy = rowTop(a.row) - G.gap / 2 + 8;
+      p.x += e.fromDx || 0;
+      const t = { x: b.x + (e.toDx || 0), y: b.y + b.h / 2 };
+      return [p, { x: p.x, y: gy }, { x: t.x, y: gy }, t];
+    }
+    case 'underTo': {
+      const p = { x: a.x + 50, y: a.y + a.h / 2 }, t = A.left(b), yb = rowTop(a.row) + rowH(a.row) - 12;
+      return [p, { x: p.x, y: yb }, { x: t.x - 18, y: yb }, { x: t.x - 18, y: t.y }, t];
+    }
+    case 'wrap': {
+      const p = A.right(a), t = A.left(b), x1 = p.x + 14, yg = rowTop(a.row) + rowH(a.row) + G.gap / 2;
+      return [p, { x: x1, y: p.y }, { x: x1, y: yg }, { x: e.margin, y: yg }, { x: e.margin, y: t.y }, t];
+    }
+    case 'loopUpLeft': {
+      const p = A.right(a), t = A.left(b), x1 = p.x + 14, y1 = rowTop(a.row) - G.gap / 2 + 9;
+      return [p, { x: x1, y: p.y }, { x: x1, y: y1 }, { x: e.margin, y: y1 }, { x: e.margin, y: t.y }, t];
+    }
+    case 'loopUnder': {
+      const p = A.right(a), t = A.left(b), x1 = p.x + 14, yb = rowTop(a.row) + rowH(a.row) + 16;
+      return [p, { x: x1, y: p.y }, { x: x1, y: yb }, { x: e.margin, y: yb }, { x: e.margin, y: t.y }, t];
+    }
+  }
+}
+
+function buildSVG() {
+  let s = `<svg viewBox="0 0 ${G.W} ${G.H}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Processdiagram för optimering i AbS">
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrow-head" d="M0,0 L10,5 L0,10 z"/></marker>
+    <marker id="ah-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrow-head-active" d="M0,0 L10,5 L0,10 z"/></marker>
+  </defs>`;
+  P.forEach(p => {
+    const x = G.X0 + p.cols[0] * G.colW + 3, w = (p.cols[1] - p.cols[0] + 1) * G.colW - 6, y = rowTop(p.r);
+    let badge = '';
+    if (p.badge) {
+      const bw = p.badge.length * 6.3 + 20;
+      badge = `<g class="badge"><rect x="${x + w - bw - 10}" y="${y + 10}" width="${bw}" height="20" rx="10"/><text x="${x + w - 10 - bw / 2}" y="${y + 20.5}">${esc(p.badge)}</text></g>`;
+    }
+    s += `<g class="band${p.layer ? ' layer-' + p.layer : ''}" data-phase="${p.id}"><rect class="bg" x="${x}" y="${y}" width="${w}" height="${rowH(p.r)}" rx="8"/><text class="name" x="${x + 14}" y="${y + 24}">${esc(p.name)}</text>${badge}</g>`;
+  });
+  E.forEach((e, i) => {
+    const pts = routePoints(e);
+    const d = pts.map((p, j) => (j ? 'L' : 'M') + p.x + ' ' + p.y).join(' ');
+    let lab = '';
+    if (e.label && e.labelMid) {
+      let best = 0, bi = 0;
+      for (let j = 0; j < pts.length - 1; j++) { const L = Math.abs(pts[j + 1].x - pts[j].x); if (L > best) { best = L; bi = j; } }
+      lab = `<text class="mid" x="${(pts[bi].x + pts[bi + 1].x) / 2}" y="${pts[bi].y - 6}" text-anchor="middle">${esc(e.label)}</text>`;
+    } else if (e.label) {
+      const p0 = pts[0], p1 = pts[1];
+      const dx = Math.sign(p1.x - p0.x), dy = Math.sign(p1.y - p0.y);
+      lab = `<text x="${p0.x + (dx ? 4 * dx : 6)}" y="${p0.y + (dy ? 14 * dy : -6) + (dy < 0 ? 4 : 0)}">${esc(e.label)}</text>`;
+    }
+    const layer = nodeById[e.from].phase === 'el' || nodeById[e.to].phase === 'el';
+    s += `<g class="edge${e.dashed ? ' dashed' : ''}${nodeById[e.from].type === 'input' ? ' input-edge' : ''}${layer ? ' layer-el' : ''}" data-i="${i}"><path d="${d}" marker-end="url(#ah)"/>${lab}</g>`;
+  });
+  N.forEach(n => {
+    const { x, y, w, h } = n;
+    let shape;
+    if (n.type === 'decision') shape = `<path class="shape" d="M${x} ${y - h / 2} L${x + w / 2} ${y} L${x} ${y + h / 2} L${x - w / 2} ${y} Z"/>`;
+    else if (n.type === 'event') shape = `<rect class="shape" x="${x - w / 2}" y="${y - h / 2}" width="${w}" height="${h}" rx="${h / 2}"/>`;
+    else if (n.type === 'input') { const k = 10; shape = `<path class="shape" d="M${x - w / 2 + k} ${y - h / 2} L${x + w / 2 + k} ${y - h / 2} L${x + w / 2 - k} ${y + h / 2} L${x - w / 2 - k} ${y + h / 2} Z"/>`; }
+    else shape = `<rect class="shape" x="${x - w / 2}" y="${y - h / 2}" width="${w}" height="${h}" rx="${n.type === 'activity' ? 12 : 3}"/>`;
+    const lh = n.type === 'decision' ? 13.5 : 15;
+    const lines = n.lines.map((t, j) => `<text class="label${j && n.type === 'input' ? ' sub' : ''}" x="${x}" y="${y + (j - (n.lines.length - 1) / 2) * lh}">${esc(t)}</text>`).join('');
+    let tags = '';
+    (n.outputs || []).forEach((t, j) => {
+      const tw = Math.max(70, t.length * 6.1 + 18), ty = y + h / 2 + 8 + j * 24;
+      tags += `<g class="tag"><rect x="${x - tw / 2}" y="${ty}" width="${tw}" height="20" rx="3"/><text x="${x}" y="${ty + 10.5}">${esc(t)}</text></g>`;
+    });
+    s += `<g class="node ${n.type}" data-id="${n.id}" tabindex="0" role="button" aria-label="${esc(n.lines.join(' '))}">${shape}${lines}${tags}</g>`;
+  });
+  return s + '</svg>';
+}
+
+const diagram = document.getElementById('diagram');
+const dots = document.getElementById('dots');
+const toggle = document.getElementById('layer-el');
+let svg, nodeEls, edgeEls, bandEls, dotEls, numbered;
+
+function build() {
+  layout();
+  diagram.innerHTML = buildSVG();
+  svg = diagram.querySelector('svg');
+  nodeEls = [...svg.querySelectorAll('.node')];
+  edgeEls = [...svg.querySelectorAll('.edge')];
+  bandEls = [...svg.querySelectorAll('.band')];
+  let html = '', cur, n = 0;
+  S.forEach((s, i) => {
+    if (s.phase !== cur) {
+      if (cur !== undefined) html += '</div>';
+      cur = s.phase;
+      const label = s.phase ? phaseById[s.phase].name : (i === 0 ? 'Start' : 'Översikt');
+      html += `<div class="dot-group${s.layer ? ' layer-el' : ''}"><span>${esc(label)}</span>`;
+    }
+    const txt = s.phase ? ++n : (i === 0 ? '◦' : '✓');
+    html += `<button class="dot${s.layer ? ' layer-el' : ''}" type="button" data-step="${i}" aria-label="${esc(s.title)}" title="${esc(s.title)}">${txt}</button>`;
+  });
+  dots.innerHTML = html + '</div>';
+  dotEls = [...dots.querySelectorAll('.dot')];
+  numbered = S.filter(s => s.phase).length;
+  toggle.setAttribute('aria-pressed', String(LAYER));
+}
+
+let step = 0;
+function render() {
+  const s = S[step], overview = !!s.overview;
+  nodeEls.forEach(el => {
+    const ns = nodeStep[el.dataset.id];
+    el.classList.toggle('is-hidden', ns > step);
+    el.classList.toggle('is-current', !overview && ns === step);
+    el.classList.toggle('is-past', !overview && ns < step);
+  });
+  edgeEls.forEach(el => {
+    const es = E[el.dataset.i].step, cur = !overview && es === step;
+    el.classList.toggle('is-hidden', es > step);
+    el.classList.toggle('is-current', cur);
+    el.classList.toggle('is-past', !overview && es < step);
+    el.querySelector('path').setAttribute('marker-end', cur ? 'url(#ah-a)' : 'url(#ah)');
+  });
+  bandEls.forEach(el => el.classList.toggle('is-active', el.dataset.phase === s.phase));
+  dotEls.forEach((d, i) => { d.classList.toggle('current', i === step); d.classList.toggle('done', i < step); });
+
+  document.getElementById('p-phase').textContent = s.phase ? phaseById[s.phase].name : (overview ? 'Översikt' : 'Introduktion');
+  const idx = S.slice(0, step + 1).filter(x => x.phase).length;
+  document.getElementById('p-no').textContent = s.phase ? `Steg ${idx} av ${numbered}` : '';
+  document.getElementById('p-title').textContent = s.title;
+  document.getElementById('p-story').textContent = s.story || '';
+  document.getElementById('p-text').textContent = s.text + (LAYER && s.textEl ? s.textEl : '');
+  let facts = '';
+  const pill = k => (k === 'Ja' || k === 'Som planerat') ? 'ja' : 'nej';
+  if (s.outcomes) facts += `<div><h3>Beslut</h3><ul>${s.outcomes.map(([k, v]) => `<li><span class="pill ${pill(k)}">${esc(k)}</span><span>${esc(v)}</span></li>`).join('')}</ul></div>`;
+  const inputs = [...(s.inputs || []), ...(LAYER ? s.inputsEl || [] : [])];
+  if (inputs.length) facts += `<div><h3>Indata</h3><ul>${inputs.map(o => `<li><span class="pill key">${esc(o)}</span></li>`).join('')}</ul></div>`;
+  if (s.outputs) facts += `<div><h3>Data i AbS</h3><ul>${s.outputs.map(o => `<li><span class="pill out">${esc(o)}</span></li>`).join('')}</ul></div>`;
+  [...(s.lists || []), ...(LAYER ? s.listsEl || [] : [])].forEach(l => {
+    facts += `<div><h3>${esc(l.title)}</h3><ul>${l.items.map(([k, v]) => `<li><span class="pill key">${esc(k)}</span>${v ? `<span>${esc(v)}</span>` : ''}</li>`).join('')}</ul></div>`;
+  });
+  if (step === 0) {
+    facts += `<div><h3>Faser</h3><ul>${P.map(p => `<li><span class="pill key">${esc(p.name)}</span><span>${esc(p.badge || (p.layer ? 'Lager · mFRR, day-ahead, intradag' : ''))}</span></li>`).join('')}</ul></div>`;
+    if (!LAYER) facts += `<div class="layer-hint">Exponerad mot elmarknaderna? Slå på <strong>Elhandel</strong> för att se hur mFRR, day-ahead och intradag vävs in i processen.</div>`;
+  }
+  document.getElementById('p-facts').innerHTML = facts;
+
+  document.getElementById('prev').disabled = step === 0;
+  document.getElementById('next').disabled = step === S.length - 1;
+  try { history.replaceState(null, '', '#' + (LAYER ? 'el-' : '') + 'steg' + step); } catch (e) {}
+  scrollToCurrent();
+}
+
+function scrollToCurrent() {
+  if (diagram.scrollWidth <= diagram.clientWidth) return;
+  const ids = Array.isArray(S[step].nodes) ? S[step].nodes : [];
+  if (!ids.length) return;
+  const n = nodeById[ids[0]], scale = svg.clientWidth / G.W;
+  diagram.scrollTo({ left: Math.max(0, n.x * scale - diagram.clientWidth / 2), behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+}
+
+function go(i) { step = Math.max(0, Math.min(S.length - 1, i)); render(); }
+
+function setLayer(on) {
+  const curStep = S[step];
+  LAYER = on;
+  build();
+  // Behåll samma steg om det finns kvar, annars närmaste föregående
+  let mi = STEPS.indexOf(curStep), i = -1;
+  while (mi >= 0 && (i = S.indexOf(STEPS[mi])) < 0) mi--;
+  go(Math.max(0, i));
+}
+
+document.getElementById('prev').addEventListener('click', () => go(step - 1));
+document.getElementById('next').addEventListener('click', () => go(step + 1));
+document.getElementById('all').addEventListener('click', () => go(S.length - 1));
+toggle.addEventListener('click', () => setLayer(!LAYER));
+dots.addEventListener('click', e => { const d = e.target.closest('.dot'); if (d) go(+d.dataset.step); });
+function jumpFrom(el) { if (el && !el.classList.contains('is-hidden')) go(nodeStep[el.dataset.id]); }
+diagram.addEventListener('click', e => jumpFrom(e.target.closest('.node')));
+diagram.addEventListener('keydown', e => { if (e.key === 'Enter') { const el = e.target.closest('.node'); if (el) { e.preventDefault(); jumpFrom(el); } } });
+document.addEventListener('keydown', e => {
+  if (e.target.closest && e.target.closest('input, textarea, select')) return;
+  if (e.key === 'ArrowRight' || e.key === 'PageDown' || (e.key === ' ' && e.target.tagName !== 'BUTTON')) { e.preventDefault(); go(step + 1); }
+  else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); go(step - 1); }
+  else if (e.key === 'Home') go(0);
+  else if (e.key === 'End') go(S.length - 1);
+  else if (e.key === 'e' || e.key === 'E') setLayer(!LAYER);
+});
+
+const m = /^#(el-)?steg(\d+)$/.exec(location.hash || '');
+LAYER = !!(m && m[1]);
+build();
+go(m ? +m[2] : 0);
+</script>
+
+</body>
+</html>
