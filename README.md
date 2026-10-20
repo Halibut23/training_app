@@ -33,6 +33,7 @@ The files created by `init` contain **invented example values**. Before any plan
 
 Tell Claude: **"Gör veckoplanen"** (make the weekly plan). The agent runs `sync` → asks for the check-in (primary limiter, RPE, strength, sleep) → `context` → writes the plan → `validate`/`render` → logs the decision.
 If the agent can't reach Garmin from its environment: run `python -m trainer sync` yourself first.
+Once you approve the plan, `python -m trainer garmin-push --week <W>` puts the bike and run sessions in Garmin Connect as structured workouts on their planned days (`--dry-run` shows the steps first). Target spans (ERG power, run pace) are your preference in `profile.garmin_workouts`.
 
 Other requests:
 - **"Revidera planen"** (revise the plan) mid-week — new revision number; completed days are left untouched.
@@ -40,7 +41,7 @@ Other requests:
 - No Garmin access? Put `.fit` files in `data/inbox/` or fill in `data/inbox/manual_sessions.csv`, then run `python -m trainer import` and `normalize`.
 
 ## Commands
-`login · fetch · import · normalize · sync · status · checkin · context · new-plan · validate · render` — see `docs/DESIGN.md` §2.2.
+`login · fetch · import · normalize · sync · status · checkin · context · new-plan · validate · render · garmin-push` — see `docs/DESIGN.md` §2.2.
 
 ## Git and personal data
 The code, schemas, tests and SDD specs (`CLAUDE.md`, `.claude/`, `docs/*.md`) are version-controlled. All personal data (profile, goals, season plan, check-ins, plans, coach log, Garmin data, hand-off, `.env`, tokens) is git-ignored; see `.gitignore` and `docs/DESIGN.md` D-015.

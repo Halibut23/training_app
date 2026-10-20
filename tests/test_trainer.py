@@ -469,3 +469,188 @@ class TestAgentFiles(unittest.TestCase):
         self.assertIn("Read(./.env)", deny)
         self.assertIn("Read(./.garmin_tokens/**)", deny)
         self.assertIn("Read(./data/raw/**)", deny)
+
+def _bike(structure, erg=True, **kw):
+    s = {"id": "W-1", "date": "2026-10-22", "sport": "bike", "session_type": "bike_threshold", "title": "2 x 20",
+         "priority": "key", "duration_min": 70, "status": "planned", "structure": structure}
+    if erg is not None:
+        s["erg"] = erg
+    s.update(kw)
+    return s
+
+
+def _flat(payload):
+    out = []
+
+    def walk(nodes):
+        for n in nodes:
+            out.append(n)
+            walk(n.get("workoutSteps", []))
+    walk(payload["workoutSegments"][0]["workoutSteps"])
+    return out
+
+
+class TestGarminWorkouts(unittest.TestCase):
+    """D-022 / R-WO-01…05: plan session → Garmin workout JSON."""
+
+    PROFILE = {"language": "sv"}
+
+    def compile(self, s, profile=None):
+        from trainer.garmin_workouts import compile_session
+        return compile_session(s, "2026-W43", profile or self.PROFILE, "sv")
+
+    def test_erg_span_is_10_w_around_setpoint(self):
+        p, e, _ = self.compile(_bike([{"label": "Block", "duration_min": 20, "target": {"power_w": [220, 225]}}]))
+        self.assertEqual(e, [])
+        st = _flat(p)[0]
+        self.assertEqual((st["targetValueOne"], st["targetValueTwo"]), (218, 228))  # setpoint 223 (222.5 rounded up)
+        self.assertEqual(st["targetType"]["workoutTargetTypeKey"], "power.zone")
+
+    def test_free_ride_span_widened_to_preference(self):
+        p, _, _ = self.compile(_bike([{"label": "Z2", "duration_min": 60, "target": {"power_w": [150, 160]}}], erg=False))
+        st = _flat(p)[0]
+        self.assertGreaterEqual(st["targetValueTwo"] - st["targetValueOne"], 20)
+        self.assertIn("plan 150–160 W", st["description"])
+
+    def test_spans_follow_profile_preference(self):
+        prof = {"garmin_workouts": {"bike_erg_power_span_w": 6}}
+        p, _, _ = self.compile(_bike([{"label": "B", "duration_min": 5, "target": {"power_w": [200, 200]}}]), prof)
+        st = _flat(p)[0]
+        self.assertEqual((st["targetValueOne"], st["targetValueTwo"]), (197, 203))
+
+    def test_bike_requires_erg_flag(self):
+        p, e, _ = self.compile(_bike([{"label": "B", "duration_min": 5, "target": {"power_w": [200, 210]}}], erg=None))
+        self.assertIsNone(p)
+        self.assertTrue(any("R-WO-02" in x for x in e))
+
+    def test_every_step_needs_end_condition(self):
+        _, e, _ = self.compile(_bike([{"label": "Uppvärmning", "target": {"power_w": [150, 170]}}]))
+        self.assertTrue(any("R-WO-01" in x for x in e))
+
+    def test_unprogrammed_substeps_warned(self):
+        _, _, w = self.compile(_bike([{"label": "Uppvärmning inkl. 2 × 30 s", "duration_min": 15,
+                                       "target": {"power_w": [150, 170]}}]))
+        self.assertTrue(any("sub-steps" in x for x in w))
+
+    def test_structure_kinds_repeats_and_order(self):
+        p, e, w = self.compile(_bike([
+            {"label": "Uppv", "steps": [
+                {"label": "Lugnt", "duration_min": 10, "target": {"power_w": [150, 160]}},
+                {"label": "Öppnare", "reps": 2, "steps": [
+                    {"label": "På", "kind": "interval", "duration_min": 0.5, "target": {"power_w": [250, 250]}},
+                    {"label": "Av", "kind": "recovery", "duration_min": 2, "target": {"power_w": [140, 140]}}]}]},
+            {"label": "Block", "reps": 2, "duration_min": 20, "recovery_min": 5,
+             "recovery_target": {"power_w": [130, 140]}, "target": {"power_w": [220, 225], "cadence_rpm": [88, 95]}},
+            {"label": "Nedv", "duration_min": 10, "target": {"power_w": [120, 140]}}]))
+        self.assertEqual((e, w), ([], []))
+        top = p["workoutSegments"][0]["workoutSteps"]
+        self.assertEqual([n["stepType"]["stepTypeKey"] for n in top], ["warmup", "repeat", "repeat", "cooldown"])
+        rep = top[2]
+        self.assertEqual(rep["numberOfIterations"], 2)
+        self.assertEqual([c["stepType"]["stepTypeKey"] for c in rep["workoutSteps"]], ["interval", "recovery"])
+        self.assertTrue(all(c["childStepId"] == rep["childStepId"] for c in rep["workoutSteps"]))
+        self.assertEqual(rep["workoutSteps"][0]["secondaryTargetType"]["workoutTargetTypeKey"], "cadence")
+        orders = [n["stepOrder"] for n in _flat(p)]
+        self.assertEqual(orders, list(range(1, len(orders) + 1)))
+
+    def test_run_pace_widened_and_in_m_per_s(self):
+        s = {"id": "R-1", "date": "2026-10-24", "sport": "run", "session_type": "run_quality", "title": "Tempo",
+             "priority": "key", "duration_min": 40, "status": "planned",
+             "structure": [{"label": "Tempo", "duration_min": 10, "target": {"pace_min_km": [4.75, 4.85],
+                                                                          "hr_max_bpm": 170}}]}
+        p, e, _ = self.compile(s)
+        st = _flat(p)[0]
+        self.assertEqual(st["targetType"]["workoutTargetTypeKey"], "pace.zone")
+        slow, fast = 1000 / st["targetValueOne"], 1000 / st["targetValueTwo"]
+        self.assertAlmostEqual(slow - fast, 30, delta=0.5)        # default run_pace_span_min_s_per_km
+        self.assertAlmostEqual((slow + fast) / 2, 4.8 * 60, delta=0.5)
+        self.assertEqual(st["secondaryTargetType"]["workoutTargetTypeKey"], "heart.rate.zone")
+
+    def test_easy_run_uses_hr_cap(self):
+        s = {"id": "R-2", "date": "2026-10-24", "sport": "run", "session_type": "run_easy", "title": "Lugnt",
+             "priority": "supporting", "duration_min": 30, "status": "planned",
+             "structure": [{"label": "Lugnt", "distance_km": 5, "target": {"pace_min_km": [5.5, 6.0],
+                                                                         "hr_max_bpm": 145}}]}
+        p, _, _ = self.compile(s)
+        st = _flat(p)[0]
+        self.assertEqual(st["targetType"]["workoutTargetTypeKey"], "heart.rate.zone")
+        self.assertEqual((st["targetValueOne"], st["targetValueTwo"]), (135, 145))
+        self.assertEqual(st["endConditionValue"], 5000.0)
+
+    def test_strength_and_done_not_pushed(self):
+        from trainer.garmin_workouts import pushable
+        self.assertFalse(pushable({"sport": "strength", "status": "planned", "structure": [{"label": "x"}]}))
+        self.assertFalse(pushable(_bike([{"label": "B", "duration_min": 5}], status="done")))
+        self.assertFalse(pushable(_bike([{"label": "B", "duration_min": 5}], garmin_push=False)))
+
+
+class _FakeGarmin:
+    def __init__(self):
+        self.calls, self.n = [], 100
+
+    def upload_workout(self, payload):
+        self.n += 1
+        self.calls.append(("upload", payload["workoutName"]))
+        return {"workoutId": self.n}
+
+    def schedule_workout(self, wid, date):
+        self.calls.append(("schedule", wid, date))
+        return {"workoutScheduleId": wid * 10}
+
+    def unschedule_workout(self, sid):
+        self.calls.append(("unschedule", sid))
+
+    def update_workout(self, wid, payload):
+        self.calls.append(("update", wid))
+
+    def delete_workout(self, wid):
+        self.calls.append(("delete", wid))
+
+
+class TestGarminPush(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.paths = Paths(self.tmp.name)
+        self.plan = {"week": "2026-W43", "sessions": [
+            _bike([{"label": "B", "duration_min": 20, "target": {"power_w": [220, 225]}}])]}
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def push(self, api):
+        from trainer.garmin_client import push
+        return push(self.paths, self.plan, {}, "sv", api=api)
+
+    def test_idempotent_lifecycle(self):
+        api = _FakeGarmin()
+        r = self.push(api)
+        self.assertEqual(r["created"], ["W-1"])
+        self.assertEqual(api.calls, [("upload", "W43 2 x 20"), ("schedule", 101, "2026-10-22")])
+        api.calls.clear()
+        self.assertEqual(self.push(api)["unchanged"], ["W-1"])
+        self.assertEqual(api.calls, [])
+        self.plan["sessions"][0]["structure"][0]["target"]["power_w"] = [225, 230]
+        self.assertEqual(self.push(api)["updated"], ["W-1"])
+        self.assertEqual(api.calls, [("update", 101)])
+        api.calls.clear()
+        self.plan["sessions"][0]["date"] = "2026-10-23"
+        self.assertEqual(self.push(api)["rescheduled"], ["W-1"])
+        self.assertEqual(api.calls, [("unschedule", 1010), ("schedule", 101, "2026-10-23")])
+        api.calls.clear()
+        self.plan["sessions"][0]["status"] = "missed"
+        self.assertEqual(self.push(api)["deleted"], ["W-1"])
+        self.assertEqual(read_json(self.paths.garmin_state), {})
+
+    def test_done_session_kept(self):
+        api = _FakeGarmin()
+        self.push(api)
+        self.plan["sessions"][0]["status"] = "done"
+        api.calls.clear()
+        self.push(api)
+        self.assertEqual(api.calls, [])
+        self.assertIn("W-1", read_json(self.paths.garmin_state))
+
+    def test_compile_error_blocks_push(self):
+        del self.plan["sessions"][0]["erg"]
+        with self.assertRaises(ValueError):
+            self.push(_FakeGarmin())

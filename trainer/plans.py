@@ -93,6 +93,11 @@ def validate(plan: dict, paths: Paths, profile: dict | None = None) -> tuple[lis
         lo, hi = profile["budget"]["normal_range_hours"]
         if hours > hi + 1:
             warnings.append(f"{hours:.1f} h > budget {hi} h (R-BUD-01)")
+    # Garmin push readiness (D-022): errors here block `garmin-push`, but the plan itself stays valid
+    from .garmin_workouts import compile_plan
+    from .i18n import lang_of
+    _, g_err, g_warn = compile_plan(plan, profile, lang_of(profile))
+    warnings += [f"garmin: {m}" for m in g_err + g_warn]
     return errors, warnings
 
 

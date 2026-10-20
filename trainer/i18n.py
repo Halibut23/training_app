@@ -153,6 +153,9 @@ _T = {
         "b_checkin_missing": "Saknas för {week}",
         "b_log_more": "…(se loggen)",
         "b_next": "Planering → skill `weekly-loop`; revidering → `revise-plan`; kod/spec → läs docs/DESIGN.md.",
+        # Garmin workouts (D-022)
+        "erg_on": "ERG på: trainern håller effekten",
+        "erg_off": "ERG av: fri effekt, styr själv",
     },
     "en": {
         "pr_48h": "At least 48 h between key quality sessions (R-GEN-07).",
@@ -258,6 +261,8 @@ _T = {
         "b_checkin_missing": "Missing for {week}",
         "b_log_more": "…(see log)",
         "b_next": "Planning → skill `weekly-loop`; revision → `revise-plan`; code/spec → read docs/DESIGN.md.",
+        "erg_on": "ERG on: the trainer holds the power",
+        "erg_off": "ERG off: free riding, pace yourself",
     },
 }
 

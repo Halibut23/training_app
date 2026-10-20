@@ -17,6 +17,7 @@ Rules in `CLAUDE.md` (C2, F1–F8, G) apply throughout. Start from the `trainer 
 2. Ask the athlete for the check-in — **briefly**, only what data can't tell: primary-limiter status per run (grön/gul/röd + next morning), RPE on key sessions, strength done?, sleep/stress/illness, goal changes, constraints next week (travel, work), **and sessions the athlete has already scheduled themselves** (group rides, races, own plans) — plan around them, never on top of them. Write it with `python -m trainer checkin --week <W>` + fill in.
 3. `python -m trainer context --week <next W>` → read `data/context/<W>.md`.
 4. Analyse per COACHING_SPEC §8: compare with relevant references, interpret, choose **one** adjustment type.
-5. Write `plans/<W>.json` (start from `python -m trainer new-plan --week <W>`) including `placement_rules`, then `validate` and `render`.
+5. Write `plans/<W>.json` (start from `python -m trainer new-plan --week <W>`) including `placement_rules`, then `validate` and `render`. Bike/run sessions follow COACHING_SPEC §5a: every step in `structure` (warm-up sub-steps, recoveries with `recovery_target`, per-rep differences), `erg` on every bike session; fix all `garmin:` warnings.
 6. Append to `log/coach_log.md` (in `profile.language`) as the **newest entry at the top**, heading `## YYYY-MM-DD — title`: week, data highlights, decision, adjustment type, rules applied, open questions.
 7. Give the athlete a short summary in chat: what changed vs last week and why (≤ 10 lines), and point to `plans/<W>.md`.
+8. Garmin (R-WO-05, D-022): show `python -m trainer garmin-push --week <W> --dry-run`; after the athlete approves, push (`garmin-push --week <W>`). If Garmin is unreachable from your shell, ask the athlete to run it locally.
