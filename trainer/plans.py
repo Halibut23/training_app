@@ -49,6 +49,47 @@ def known_rule_ids(spec_path: Path) -> set[str]:
     return set(re.findall(r"\b(R-[A-Z]+-\d{2})\b", spec_path.read_text(encoding="utf-8")))
 
 
+# ---- structure totals (B-011): session duration/distance must match its programmed steps ----
+_DEFAULT_EASY_PACE = 6.0      # min/km when a run step has no pace target
+_JOG_EXTRA = 1.0              # recovery jog without target: easy pace + 1 min/km
+
+
+def _expand(steps: list[dict]):
+    """Yield (minutes, km, pace_min_km_or_None, kind) for every executed step, repeats expanded."""
+    for st in steps or []:
+        reps = st.get("reps") or 1
+        for _ in range(reps):
+            if st.get("steps"):
+                yield from _expand(st["steps"])
+                continue
+            pace = (st.get("target") or {}).get("pace_min_km")
+            mid = (pace[0] + pace[1]) / 2 if pace and pace[0] and pace[1] else None
+            yield st.get("duration_min"), st.get("distance_km"), mid, st.get("kind")
+            if st.get("recovery_min"):
+                rp = (st.get("recovery_target") or {}).get("pace_min_km")
+                yield st["recovery_min"], None, ((rp[0] + rp[1]) / 2 if rp else None), "recovery"
+
+
+def structure_totals(session: dict, easy_pace: float | None = None) -> tuple[float | None, float | None]:
+    """Estimated (minutes, km) of a session from its structure; km only for runs. None if not derivable."""
+    if not session.get("structure"):
+        return None, None
+    easy = easy_pace or _DEFAULT_EASY_PACE
+    mins = km = 0.0
+    run = session.get("sport") == "run"
+    for m, d, pace, kind in _expand(session["structure"]):
+        p = pace or (easy + _JOG_EXTRA if kind == "recovery" else easy)
+        if m:
+            mins += m
+            km += m / p if run else 0
+        elif d:
+            km += d
+            mins += d * p if run else 0
+        else:
+            return None, None  # strength-style steps without time/distance
+    return mins, (km if run else None)
+
+
 def validate(plan: dict, paths: Paths, profile: dict | None = None) -> tuple[list[str], list[str]]:
     """Returns (errors, warnings)."""
     errors = _schema_errors(plan, paths.schemas / "plan.schema.json")
@@ -81,6 +122,18 @@ def validate(plan: dict, paths: Paths, profile: dict | None = None) -> tuple[lis
     run_km = sum(x.get("distance_km") or 0 for x in plan["sessions"] if x["sport"] == "run")
     if "run_km" in plan["targets"] and abs(run_km - plan["targets"]["run_km"]) > 0.5:
         warnings.append(f"Run km total {run_km} ≠ targets.run_km {plan['targets']['run_km']}")
+    easy = None
+    if profile:
+        ep = (profile.get("run") or {}).get("easy_pace_min_km")
+        easy = sum(ep) / 2 if ep else None
+    for x in plan["sessions"]:
+        if x["sport"] not in ("run", "bike") or x.get("status") not in (None, "planned"):
+            continue
+        mins, km = structure_totals(x, easy)
+        if mins and abs(mins - x["duration_min"]) > max(5, 0.1 * mins):
+            warnings.append(f"{x['id']}: duration_min {x['duration_min']:g} ≠ structure ≈ {mins:.0f} min (B-011)")
+        if km is not None and x.get("distance_km") and abs(km - x["distance_km"]) > max(0.5, 0.15 * km):
+            warnings.append(f"{x['id']}: distance_km {x['distance_km']:g} ≠ structure ≈ {km:.1f} km (B-011)")
     n_str = sum(1 for x in plan["sessions"] if x["sport"] == "strength")
     if n_str < 2:
         warnings.append(f"{n_str} strength sessions (R-STR-01: 2)")

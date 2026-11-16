@@ -8,8 +8,8 @@
 |---|---|
 | Owner | see git history |
 | Status | PoC |
-| Last updated | 2026-10-20 |
-| Spec version | 0.7.0 |
+| Last updated | 2026-11-16 |
+| Spec version | 0.8.1 |
 
 ---
 
@@ -98,6 +98,11 @@ python -m trainer fetch [--days 21]     # Garmin → data/raw (activities, laps,
 python -m trainer import                # data/inbox → data/raw (FIT) / manual CSV
 python -m trainer normalize             # raw → data/derived (idempotent rebuild)
 python -m trainer status                # last 14 days + load summary (quick look)
+python -m trainer activity [--date D | --id ID] [--type T] [--json]
+                                        # one day's activities (default: latest) with summary, laps and work intervals
+                                        # (W, % FTP, avg/max HR per rep, first→last drift). Read-only, writes no files (D-024)
+python -m trainer wellness [--days 7] [--end D] [--json]
+                                        # daily HRV (night, 7d), HRV status, resting HR, sleep h/score with baseline marks. Read-only (D-024)
 python -m trainer brief [--week W]      # session-start brief (≤ 4,000 chars): state, anchors, goals, current plan, recovery, check-in, latest 3 log entries, open questions. Prints only, writes no files (D-019)
 python -m trainer checkin --week W      # creates check-in template
 python -m trainer context --week W      # analysis bundle for planning week W
@@ -139,6 +144,9 @@ Add new decisions at the bottom. Never delete; mark superseded ones.
 | D-019 | 2026-10-16 | Tiered context reading. A session starts by reading `CLAUDE.md` + the output of `python -m trainer brief` only; further files are read per task tier (tier table in `CLAUDE.md` §0). `data/context/W.md` is the single analysis input for planning; the agent does not re-read profile/goals/plan JSON for facts it contains. | The old §0 read ~74k chars before every session, even for a one-line message; the same facts were read from several places and a context file could be stale. | Active |
 | D-020 | 2026-10-16 | Procedures as on-demand files. Onboarding, the weekly loop and mid-week revision move from `CLAUDE.md` to `.claude/skills/<name>/SKILL.md` (`onboarding`, `weekly-loop`, `revise-plan`). `CLAUDE.md` keeps the rules (IDs unchanged) and an index with explicit paths, so it also works in clients that don't auto-load skills. Refines D-017 (onboarding location). | Rules must always be loaded; procedures only when the task needs them. | Active |
 | D-022 | 2026-10-20 | Push planned sessions to Garmin as structured workouts (resolves OQ-4, N-3). `trainer/garmin_workouts.py` compiles plan `structure` to Garmin workout JSON (stdlib only, testable offline); `garmin_client.push` uploads via `garminconnect` (`upload_workout`, `schedule_workout`, `update_workout`, `delete_workout`). Scope: bike + run sessions with status `planned` and `structure`; strength stays in the plan (Garmin's exercise catalogue is too restrictive). Plan schema: step `kind`, `steps` (sub-steps / repeat groups), `notes`, `recovery_target`, `lap_button`, `garmin_target`; session `erg`, `garmin_push`. Target spans from `profile.garmin_workouts` (R-WO-03). Compile problems are warnings in `validate` and errors in `garmin-push`. Push state lives in a tool-owned file, not in the plan. | The athlete wants the plan on the watch/head unit without manual entry; every step must be programmed and ERG behaviour explicit. Keeping the compiler pure makes it testable without Garmin; keeping ids out of the plan keeps the plan agent-owned (D-007). | Active |
+| D-023 | 2026-10-24 | The trainer is the reference power source (FTP, zones, ramp test). Other sources (outdoor crank meter) are compared with the trainer only through a per-athlete model (factor or additive offset) in `profile.bike.power_sources`; until N-11 is implemented the agent converts manually and states it. Dual recordings of the same ride are counted once (the trainer file) in load analysis. | Measured device gap would otherwise distort zones, progression decisions and session comparisons. | Active |
+| D-024 | 2026-11-16 | Read-only views `trainer activity` and `trainer wellness` (`trainer/show.py`) expose per-lap / per-work-interval data and daily wellness from `data/derived/` via `normalize.load`. `brief` adds one line with the last 3 days' morning values; `context` adds `wellness.daily_last_7` (JSON + one line in the .md) and, per interval session, one short line with W/HR per rep (≤ 4 reps listed, longer sets summarised first … last). `analysis.compact` gains `reps` and `hr_sensor`. | Decision rules in plans use per-rep values (e.g. HR in the last block) and go/no-go checks use single-morning values, but the agent only saw averages and may not read `data/derived/*.jsonl` (C1). Views keep C1 intact and stay token-cheap. | Active |
+| D-025 | 2026-11-16 | Data-coverage principle for read guards (refines D-019, D-021, D-024). (1) **Coverage:** every field a coaching rule (COACHING_SPEC) or a plan decision rule uses must be reachable through a CLI view (`brief`, `context`, `status`, `activity`, `wellness`). (2) **Fallback:** if a view lacks a needed field, the agent may extract only that record/field from `data/derived/*.jsonl` with a filtered script (by id/date, selected keys), never print or read the whole file, and must log the gap in §8 so a view can cover it. `data/raw/**` stays forbidden. (3) A token optimisation that removes or hides data must state which decisions used that data and how they are still served. | The D-019 read ban on `data/derived/*.jsonl` was added together with the raw-data guard without checking what the views omitted; per-rep HR and single-morning values were then unavailable to plan decision rules (fixed by D-024). Token savings must never block a coaching decision. | Active |
 | D-021 | 2026-10-16 | Coach-log contract and read guards. `log/coach_log.md` is newest-first by heading date (`## YYYY-MM-DD — …`); `brief` sorts entries by that date and never trusts file order. Entries older than 60 days move to `log/archive/YYYY-MM.md` via `trainer log-archive`. `.claude/settings.json` denies reads of secrets, raw data and tool caches (defence in depth for B1/C1; the text rules stay because not every client honours it). | Unbounded log growth and out-of-order entries forced whole-file reads; some files are easy to read by mistake (39 MB of raw wellness JSON). | Active |
 
 ## 4. Constraints
@@ -214,6 +222,8 @@ Preferences, `profile.garmin_workouts` (all optional; defaults in brackets): `bi
 | OQ-2 | ~~Does Garmin Connect FTP equal `profile.bike.ftp_w`?~~ **Resolved 2026-10-01:** `garmin_tss` ≈ our TSS (±1) → Garmin uses the profile FTP. | – |
 | OQ-3 | ~~Which ramp-test protocol/app?~~ **Resolved 2026-10-01:** ramp test; protocol recorded in `goals.json` (`test_protocol`). | – |
 | OQ-4 | ~~Should plans be pushed to Garmin as structured workouts?~~ **Resolved 2026-10-20:** yes, bike + run, after approval (D-022). | – |
+| OQ-5 | Outdoor power meter vs indoor trainer: the athlete's outdoor values sit clearly above the trainer-based FTP (VO2 reps and threshold blocks outdoors are well above the trainer equivalents at similar HR/RPE). Is it a device offset, terrain/climbing effect, or both? Until resolved, outdoor and trainer power are compared only within the same source; FTP and the goal stay trainer-based. Resolve with a dual-recording ride (both sources at once) or a steady block on both at the same HR. Note: in ERG the recorded interval average sits a few watts below the setpoint (ramp-in at interval starts and settling), so setpoint − average is not evidence of a meter offset by itself. | Zone accuracy outdoors; comparability of sessions. |
+| OQ-5b | ~~Proportional or constant?~~ **Answered 2026-10-31 (calibrated dual recording over a full threshold session):** for this athlete the gap is roughly constant across the measured range, so the per-athlete model is an additive offset, not a factor. Value in `profile.bike.power_sources` (D-015). Re-check if equipment or calibration routine changes. | – |
 
 ## 7. Known bugs / limitations
 
@@ -226,6 +236,10 @@ Preferences, `profile.garmin_workouts` (all optional; defaults in brackets): `bi
 | B-007 | Outdoor rides with high variability (avg power well below NP, e.g. invented: avg 170 W, NP 205 W, IF 0.90) classified `bike_sweetspot` although executed as base ride. Hilly/group rides inflate NP. | Agent overrides via check-in `session_type_override`; consider VI-based rule (N-8). | Open |
 | B-008 | Rides ≥ 150 min are always `bike_long` (0.1.2 rule), so a long outdoor ride built around structured 2 × 20 min blocks loses its threshold label. | Agent reads work intervals and name; override via check-in. Consider: ≥ 2 work intervals ≥ 15 min at ≥ 0.95 FTP → threshold even when long. | Open |
 | B-009 | Compliance borrowed activities from the previous week (7-day lookback) for any session and let fallback matches steal sessions with explicit `actual_activity_ids`. | Fixed: explicit ids first; lookback 3 days and only for key sessions with the same type; `missed` status respected. Tests added. | Fixed |
+| B-010 | Indoor (treadmill) runs: watch-derived pace/distance can be clearly off (slow) versus the belt; pace metrics and run-quality classification for indoor runs are low-confidence. | Agent uses the belt speed / athlete's estimate from the check-in and judges by HR + RPE. Possible fix: footpod calibration or a check-in field for belt speed. | Open |
+| B-011 | A run session's `duration_min`/`distance_km` could disagree with its programmed `structure` (a threshold run planned as 40 min / 7 km whose steps summed to ~50 min / ~8.7 km), which silently breaks weekly run-volume control. | Fixed: `plans.structure_totals` estimates minutes and km from the steps (pace targets, else the easy pace from the profile, jog recoveries +1 min/km); `validate` warns when they differ (> max(5 min, 10 %) or > max(0.5 km, 15 %)). Tests added. | Fixed |
+| B-012 | Outdoor rides with the crank meter get NP/IF/TSS and session type from uncorrected power (offset in `profile.bike.power_sources`). Example (invented values): a long Z2 ride at NP 200 W crank ≈ 185 W trainer was classified `bike_tempo` with inflated IF/TSS and triggered a false R-GEN-07 back-to-back flag. | Workaround: agent converts manually (D-023). Fix = N-11 (apply `profile.bike.power_sources` offset before metrics/classification). | Open |
+| B-013 | Compliance can match an activity that the previous week's plan already consumed: a key session done on the last days of week W−1 (e.g. the long ride) is also borrowed by the same-type key session of week W through the 3-day lookback (B-009), so a session still in the future shows as `modified (moved)`. | Agent ignores the match when the activity date is before the week and the session date is after today. Fix: exclude activities matched by the previous week's plan (or skip lookback when the activity lies in the previous plan's date range and that plan has a same-type session). | Open |
 | B-002 | Outdoor rides with auto-laps (e.g. every 5 km) can be misclassified as interval sessions. | Agent overrides `session_type` via check-in `overrides`. | Open |
 | B-003 | NP from laps (C-M5) underestimates NP for variable efforts inside laps. | Use FIT records when available. | Open |
 
@@ -241,6 +255,7 @@ Preferences, `profile.garmin_workouts` (all optional; defaults in brackets): `bi
 | N-6 | Parse Garmin Connect activity CSV export (locale-dependent headers). | Better fallback |
 | N-8 | Use variability index (NP/avg) and lap structure to separate outdoor 'hard by terrain' from structured intervals. | Better classification (B-007) |
 | N-9 | Auto-detect max-HR candidates (and later LTHR) with the C-M6 plausibility rule and flag them in `context` as a question to the athlete (never auto-update, C3a). | Correct zones without manual digging |
+| N-11 | Tag each activity with its power source (trainer / outdoor meter), keep per-source references and apply `profile.bike.power_sources` factor when comparing across sources; de-duplicate dual recordings (D-023). | Comparable analysis across sources |
 | N-7 | Weather/daylight input for outdoor vs trainer choice. | Planning realism |
 | N-10 | ~~`profile.language` (sv/en) for athlete-facing output.~~ **Done in 0.5.0 (D-018).** | – |
 
@@ -248,6 +263,10 @@ Preferences, `profile.garmin_workouts` (all optional; defaults in brackets): `bi
 
 | Date | Version | Change |
 |---|---|---|
+| 2026-11-16 | 0.8.1 | D-025 data-coverage principle: views must cover decision data; filtered single-record fallback from `data/derived/` with a §8 gap entry; CLAUDE.md C1 and tier table updated. |
+| 2026-11-16 | 0.8.0 | D-024: `trainer activity` / `trainer wellness` (read-only views of laps, work intervals and daily wellness); `brief` daily line; `context` daily values + per-rep line; CLAUDE.md C1 lists the views. B-013 logged. Context size test now excludes the new per-rep lines (bounded ≤ 70 chars each). |
+| 2026-10-31 | 0.7.2 | OQ-5b answered: source-gap model may be additive (D-023 wording updated). |
+| 2026-10-26 | 0.7.1 | D-023 trainer = reference power source (OQ-5/5b, N-11); B-010 treadmill pace low-confidence; B-011 fixed: `validate` checks session duration/distance against `structure` (`plans.structure_totals`). |
 | 2026-10-20 | 0.7.0 | D-022: `trainer garmin-push` (bike + run structured workouts, scheduled, idempotent); plan schema step `kind`/`steps`/`notes`/`recovery_target`/`lap_button`/`garmin_target`, session `erg`/`garmin_push`; `profile.garmin_workouts` spans; COACHING_SPEC R-WO-01…05; `validate` warns on un-programmed steps; C-T6; §5.7. OQ-4 resolved, N-3 done. |
 | 2026-10-16 | 0.6.0 | D-019/D-020/D-021: tiered context reading; `trainer brief`; `trainer log-archive` and coach-log contract; procedures moved to `.claude/skills/`; `CLAUDE.md` ≤ 5,000 chars; `.claude/settings.json` read guards; context file shows only relevant reference deltas. Session start ≈ 8,600 chars (was 74,113); weekly loop ≈ 20,700 chars (was ≈ 90,800). |
 | 2026-10-08 | 0.5.1 | B-009 fixed (compliance matching passes, refines D-016). |

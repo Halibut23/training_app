@@ -47,6 +47,8 @@
 | R-RUN-08 | Easy run = `profile.run.easy_pace_min_km` at ≤ `profile.run.easy_hr_cap_bpm`; HR cap wins over pace. A long run averaging above the cap is *not* easy. |
 | R-RUN-09 | Quality progression path: strides → short pickups → short intervals → longer intervals → threshold / race-specific pace. |
 | R-RUN-10 | Run tolerance is judged by limiter response, never by aerobic fitness. Don't increase running because bike fitness improved. |
+| R-RUN-11 | Guidance from the athlete's clinician (`profile.injury.clinician_guidance`: current weekly volume, target, conditions) sets the run-volume baseline and ceiling; the agent plans within it and still applies R-RUN-02…07 week to week. New guidance is recorded with date and source and noted in the coach log. |
+| R-RUN-12 | When both volume and run quality are progressing, alternate them: a week that adds volume holds the quality session constant, and a week that progresses the quality session holds volume (operationalises R-RUN-05). |
 
 ## 4. Cycling
 
@@ -103,6 +105,7 @@ Personal and date-bound → `data/athlete/season_plan.md` (git-ignored). The age
 
 | Date | Change |
 |---|---|
+| 2026-10-24 | v0.5 — Added R-RUN-11 (clinician guidance sets run-volume baseline/ceiling) and R-RUN-12 (alternate volume and quality steps). |
 | 2026-10-20 | v0.4 — Added §5a R-WO-01…05 (structured workouts pushed to Garmin): every step programmed, ERG flag on bike sessions, target spans from the athlete's preference. |
 | 2026-10-03 | v0.3 — Added R-GEN-11 (weekly menu, order free) and R-GEN-12 (placement rules), from athlete feedback: they read purpose + intensity and place sessions themselves. |
 | 2026-10-01 | v0.2 — Genericised for git (D-015): personal values replaced by profile/goals keys; periodisation moved to `data/athlete/season_plan.md`. Added R-REC-04 (lesson from an aborted session followed by a very hard one). |

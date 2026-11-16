@@ -10,6 +10,7 @@ Rules in `CLAUDE.md` (C2, F1–F8, G) apply throughout. Start from the `trainer 
 - `docs/COACHING_SPEC.md`
 - `data/context/<W>.md` — regenerate first (step 3). It summarises profile, goals, previous plan, compliance, check-in and flags: do **not** re-read those files for facts it contains.
 - `data/athlete/season_plan.md` only if periodisation matters.
+- Per-rep values (e.g. HR in the last block) → `python -m trainer activity --date <D>`; single-morning HRV/resting HR → `python -m trainer wellness` (D-024).
 - Not needed: `docs/DESIGN.md`, `schemas/*.json` (only on a validation error), `plans/<prev>.json` (only when revising), the full coach log.
 
 **Procedure**

@@ -6,7 +6,7 @@ import datetime as dt
 import json
 import sys
 
-from . import analysis, brief, coachlog, context, fit_import, normalize, plans
+from . import analysis, brief, coachlog, context, fit_import, normalize, plans, show
 from .config import Paths, profile_state, read_json, write_json
 from .i18n import lang_of
 from .weeks import next_week, parse_date, shift_week, week_of
@@ -17,7 +17,7 @@ def _p(obj):
 
 
 GUARDED = ("checkin", "context", "new-plan", "garmin-push")   # refuse on example/missing profile (D-017)
-WARNED = ("status", "validate", "render")
+WARNED = ("status", "validate", "render", "activity", "wellness")
 
 
 def _profile(paths: Paths) -> dict:
@@ -98,6 +98,15 @@ def main(argv=None) -> int:
     add("normalize")
     sy = add("sync"); sy.add_argument("--days", type=int, default=21)
     st = add("status"); st.add_argument("--days", type=int, default=14)
+    ac = add("activity", help="one activity with laps and work intervals (default: latest day) (D-024)")
+    ac.add_argument("--date", default=None, help="YYYY-MM-DD (all activities that day)")
+    ac.add_argument("--id", default=None, help="activity id, e.g. garmin:123 or 123")
+    ac.add_argument("--type", default=None, help="session_type filter, e.g. bike_threshold")
+    ac.add_argument("--json", action="store_true", help="print the normalised record(s) as JSON")
+    we = add("wellness", help="daily HRV / resting HR / sleep (D-024)")
+    we.add_argument("--days", type=int, default=7)
+    we.add_argument("--end", default=None, help="last date YYYY-MM-DD (default: today)")
+    we.add_argument("--json", action="store_true")
     for name in ("checkin", "context", "new-plan", "brief"):
         x = add(name); x.add_argument("--week", default=None)
     la = add("log-archive", help="move coach-log entries older than N days to log/archive/ (D-021)")
@@ -110,7 +119,7 @@ def main(argv=None) -> int:
     gp.add_argument("--json", action="store_true", help="with --dry-run: print the Garmin payloads")
     a = ap.parse_args(argv)
     paths = Paths(a.root) if a.root else Paths()
-    if a.cmd != "brief":  # brief writes nothing, not even empty folders (D-019)
+    if a.cmd not in ("brief", "activity", "wellness"):  # read-only views write nothing (D-019, D-024)
         paths.ensure()
     rc = _profile_guard(paths, a.cmd, a.allow_example)
     if rc is not None:
@@ -154,6 +163,25 @@ def main(argv=None) -> int:
                       + " ".join(f"{k}={c[k]}" for k in ("km", "np", "if", "tss", "avg_hr", "pace") if k in c))
         w = week_of(dt.date.today())
         _p(analysis.weekly_summary(acts, [shift_week(w, -i) for i in range(3, -1, -1)]))
+    elif a.cmd == "activity":
+        acts, _ = normalize.load(paths)
+        sel = show.select_activities(acts, a.date, a.id, a.type)
+        prof = _profile(paths)
+        if a.json:
+            _p(sel)
+        elif not sel:
+            print(show.tr(lang_of(prof), "sh_none"))
+            return 1
+        else:
+            print("\n".join(show.activity_markdown(x, lang_of(prof)) for x in sel))
+    elif a.cmd == "wellness":
+        _, well = normalize.load(paths)
+        end = parse_date(a.end) if a.end else dt.date.today()
+        rows = show.daily_wellness(well, end, a.days)
+        if a.json:
+            _p(rows)
+        else:
+            print(show.wellness_markdown(rows, _profile(paths)))
     elif a.cmd == "brief":
         print(brief.build(paths, a.week))
     elif a.cmd == "log-archive":
