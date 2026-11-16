@@ -401,7 +401,9 @@ class TestContextTrim(unittest.TestCase):
     def test_context_md_size_drops(self):
         _, md = context.run(self.p, "2026-W41", today=dt.date(2026, 10, 1))
         section = md[md.index("## Pass"):md.index("## Check-in")]
-        self.assertLess(len(section), self.SESSIONS_BEFORE)
+        reps = [l for l in section.splitlines() if l.startswith("  - intervall")]  # D-024 adds ≤ 1 short line per interval session
+        self.assertTrue(reps and all(len(l) <= 70 for l in reps))
+        self.assertLess(len(section) - sum(len(l) + 1 for l in reps), self.SESSIONS_BEFORE)
         self.assertIn("D-019", md)
 
 
@@ -654,3 +656,97 @@ class TestGarminPush(unittest.TestCase):
         del self.plan["sessions"][0]["erg"]
         with self.assertRaises(ValueError):
             self.push(_FakeGarmin())
+
+
+class TestStructureTotals(unittest.TestCase):
+    """B-011: session duration/distance must match the programmed structure."""
+
+    def _run(self, **kw):
+        base = {"id": "X-1", "sport": "run", "status": "planned", "duration_min": 40, "distance_km": 7,
+                "structure": [
+                    {"label": "wu", "kind": "warmup", "duration_min": 15, "target": {"hr_max_bpm": 145}},
+                    {"label": "rep", "reps": 5, "steps": [
+                        {"label": "on", "kind": "interval", "duration_min": 3, "target": {"pace_min_km": [4.75, 4.92]}},
+                        {"label": "jog", "kind": "recovery", "duration_min": 2}]},
+                    {"label": "cd", "kind": "cooldown", "duration_min": 10}]}
+        base.update(kw)
+        return base
+
+    def test_totals(self):
+        mins, km = plans.structure_totals(self._run(), easy_pace=5.85)
+        self.assertAlmostEqual(mins, 50)
+        self.assertTrue(8.5 < km < 9.5, km)
+
+    def test_validate_warns_on_mismatch(self):
+        sk = plans.skeleton("2026-W42", today=dt.date(2026, 10, 1))
+        sk["sessions"][0].update(self._run(id=sk["sessions"][0]["id"], date=sk["sessions"][0]["date"],
+                                           session_type="run_quality", title="T", priority="key"))
+        _, warns = plans.validate(sk, Paths(ROOT))
+        self.assertTrue(any("B-011" in w and "duration_min" in w for w in warns), warns)
+        self.assertTrue(any("B-011" in w and "distance_km" in w for w in warns), warns)
+
+
+class TestShow(unittest.TestCase):
+    """D-024: read-only views of laps/work intervals and daily wellness, so the agent never reads data/derived."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.p = make_project(Path(self.tmp.name))
+        normalize.run(self.p)
+        self.acts = read_jsonl(self.p.activities)
+        self.well = read_jsonl(self.p.wellness)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_select_activities(self):
+        from trainer import show
+        latest = show.select_activities(self.acts)
+        self.assertEqual({a["date"] for a in latest}, {"2026-09-30"})
+        self.assertEqual(show.select_activities(self.acts, aid="1")[0]["name"], "2x20")
+        self.assertEqual(show.select_activities(self.acts, aid="garmin:1")[0]["name"], "2x20")
+        self.assertEqual(show.select_activities(self.acts, date="2026-09-27", session_type="bike_long")[0]["name"], "Långpass")
+        self.assertEqual(show.select_activities(self.acts, date="2026-09-01"), [])
+
+    def test_activity_markdown_reps(self):
+        from trainer import show
+        a = next(x for x in self.acts if x["name"] == "2x20")
+        rs = show.rep_summary(a)
+        self.assertEqual((rs["power_first_w"], rs["power_last_w"], rs["hr_first"], rs["hr_last"], rs["hr_drift_bpm"]),
+                         (220, 230, 163, 165, 2))
+        md = show.activity_markdown(a, "sv")
+        self.assertIn("| 1 (varv 2) | 20.0 | 220 |", md)
+        self.assertIn("puls 163 → 165 (+2 bpm)", md)
+        self.assertEqual(show.activity_markdown(a, "en").count("| lap |"), 1)
+        run = next(x for x in self.acts if x["sport"] == "run")
+        self.assertIn("5:40", show.activity_markdown(run, "en"))  # 340 s/km lap pace
+
+    def test_wellness_views(self):
+        from trainer import show
+        rows = show.daily_wellness(self.well, dt.date(2026, 9, 30), 7)
+        self.assertEqual([r["date"] for r in (rows[0], rows[-1])], ["2026-09-24", "2026-09-30"])
+        prof = {"language": "en", "recovery_baseline": {"hrv_ms": [105, 110], "rhr_bpm": [33, 35]}}
+        md = show.wellness_markdown(rows, prof)
+        self.assertEqual(md.count("| 100 ↓ |"), 7)
+        self.assertIn("| 37 ↑ |", md)
+        self.assertNotIn("↓", show.wellness_inline(rows[-1:], {"recovery_baseline": {"hrv_ms": [90, 110]}}))
+
+    def test_brief_and_context_show_daily_and_reps(self):
+        from trainer import brief
+        prof = read_json(self.p.profile)
+        prof["source"] = "onboarding 2026-01-01"
+        write_json(self.p.profile, prof)
+        out = brief.build(self.p, "2026-W40", today=dt.date(2026, 9, 30))
+        self.assertIn("09-30 HRV 100", out)
+        _, md = context.run(self.p, "2026-W41", today=dt.date(2026, 10, 1))
+        self.assertIn("210/155 · 210/157 · 212/159", md)  # 3x12 SS: one W/HR pair per rep
+        self.assertIn("300/156 … 300/156 (n=8)", md)       # 8x1: long sets are summarised
+        self.assertIn("09-30 HRV 100", md)
+
+    def test_cli_read_only(self):
+        from trainer.__main__ import main
+        before = sorted(str(x) for x in Path(self.tmp.name).rglob("*"))
+        self.assertEqual(main(["--root", self.tmp.name, "activity", "--date", "2026-09-22", "--allow-example"]), 0)
+        self.assertEqual(main(["--root", self.tmp.name, "wellness", "--end", "2026-09-30", "--allow-example"]), 0)
+        self.assertEqual(main(["--root", self.tmp.name, "activity", "--date", "2026-01-01", "--allow-example"]), 1)
+        self.assertEqual(before, sorted(str(x) for x in Path(self.tmp.name).rglob("*")))

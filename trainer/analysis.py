@@ -94,6 +94,8 @@ def compact(a: dict) -> dict:
         "avg_hr": a.get("avg_hr"), "max_hr": a.get("max_hr"), "pace": a.get("pace_min_km"),
         "w_per_bpm": eff, "work_w": p, "work_hr": hr, "work_fade_pct": fade,
         "n_work": len(a.get("work_intervals") or []) or None,
+        "reps": [[w["avg_power"], w.get("avg_hr")] for w in a.get("work_intervals") or []] or None,
+        "hr_sensor": a.get("hr_sensor"),
         "decoupling_pct": a.get("decoupling_pct"), "rpe": a.get("rpe"), "notes": a.get("notes"),
         "summary": a.get("summary"),
     }.items() if v is not None}

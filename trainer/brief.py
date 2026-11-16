@@ -8,7 +8,7 @@ from __future__ import annotations
 import datetime as dt
 import re
 
-from . import analysis, coachlog
+from . import analysis, coachlog, show
 from .config import Paths, profile_state, read_json
 from .i18n import ADJ, STATUS, lang_of, tr
 from .normalize import load
@@ -134,7 +134,8 @@ def _sections(paths: Paths, week: str, today: dt.date, log_chars: int, title_cha
     L += ["", f"## {T('b_h_recovery')}",
           f"- HRV {w['hrv_avg_3d'] or DASH} / 14d {w['hrv_avg_14d'] or DASH} ms ({T('baseline')} {base.get('hrv_ms', DASH)})",
           f"- {T('rhr')} {w['rhr_avg_3d'] or DASH} / 14d {w['rhr_avg_14d'] or DASH} ({T('baseline')} {base.get('rhr_bpm', DASH)})",
-          f"- {T('sleep')} {w['sleep_avg_3d_h'] or DASH} / 14d {w['sleep_avg_14d_h'] or DASH} h"]
+          f"- {T('sleep')} {w['sleep_avg_3d_h'] or DASH} / 14d {w['sleep_avg_14d_h'] or DASH} h",
+          f"- {T('b_daily')}: {show.wellness_inline(w['daily'][-3:], prof)}"]
 
     # 6. check-in
     L += ["", f"## {T('b_h_checkin')}"]

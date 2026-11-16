@@ -4,7 +4,7 @@ from __future__ import annotations
 import datetime as dt
 
 from .i18n import TYPE, lang_of, tr
-from . import analysis
+from . import analysis, show
 from .config import Paths, read_json, write_json
 from .normalize import load
 from .weeks import parse_date, shift_week, week_bounds
@@ -69,7 +69,7 @@ def build(paths: Paths, week: str, today: dt.date | None = None) -> dict:
         "weekly_load": weekly,
         "pmc_last": pmc_rows[-1] if pmc_rows else None,
         "pmc_history_days": len(pmc_rows),
-        "wellness": {k: v for k, v in wsum.items() if k != "daily"},
+        "wellness": {**{k: v for k, v in wsum.items() if k != "daily"}, "daily_last_7": wsum["daily"][-7:]},
         "sessions": sessions,
         "flags": analysis.flags(acts, weekly, checkin, wsum, pmc_rows, profile, review),
         "language": lang_of(profile),
@@ -115,6 +115,8 @@ def to_markdown(ctx: dict) -> str:
     L += ["", f"## {T('recovery')}", f"- HRV 3d/14d: {_fmt(w['hrv_avg_3d'])}/{_fmt(w['hrv_avg_14d'])} ms ({T('baseline')} {w['baseline'].get('hrv_ms')})",
           f"- {T('rhr')} 3d/14d: {_fmt(w['rhr_avg_3d'])}/{_fmt(w['rhr_avg_14d'])} ({T('baseline')} {w['baseline'].get('rhr_bpm')})",
           f"- {T('sleep')} 3d/14d: {_fmt(w['sleep_avg_3d_h'])}/{_fmt(w['sleep_avg_14d_h'])} h"]
+    if w.get("daily_last_7"):
+        L.append(f"- {T('ctx_daily')}: {show.wellness_inline(w['daily_last_7'], {'language': lang, 'recovery_baseline': w['baseline']})}")
     L += ["", f"## {T('plan_vs_done')}"]
     if ctx["compliance"]:
         L += [T("compl_head"), "|---|---|---|---|---:|---|"]
@@ -137,6 +139,11 @@ def to_markdown(ctx: dict) -> str:
             r = s["reference"]
             L.append(f"  - ref {r.get('date') or r.get('id')}: " + ", ".join(f"Δ{k} {v:+g}" for k, v in analysis.relevant_deltas(a.get("type"), s["delta"]).items())
                      + (f" — {r['summary']}" if r.get("summary") else ""))
+        reps = a.get("reps") or []
+        if 2 <= len(reps) <= 4:  # per-rep HR is what decision rules use (e.g. "block 2 HR ≤ cap"), D-024
+            L.append(f"  - {T('ctx_reps')}: " + " · ".join(f"{p}/{_fmt(h)}" for p, h in reps))
+        elif len(reps) > 4:
+            L.append(f"  - {T('ctx_reps')}: {reps[0][0]}/{_fmt(reps[0][1])} … {reps[-1][0]}/{_fmt(reps[-1][1])} (n={len(reps)})")
     ci = ctx["checkin"]
     L += ["", "## Check-in", "```json", __import__("json").dumps(ci, ensure_ascii=False, indent=1) if ci else T("missing"), "```"]
     return "\n".join(L) + "\n"
